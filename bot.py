@@ -23,7 +23,7 @@ load_dotenv()
 # Pobiera klucz i przypisuje do zmiennej
 moje_api = os.getenv("MOJE_API_KEY")
 
-print("Mój klucz to:", moje_api)
+print("Mój klucz to1:", moje_api)
 
 # ================= KONFIGURACJA KLUCZY I MODELI =================
 
