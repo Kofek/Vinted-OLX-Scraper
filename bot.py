@@ -1,6 +1,6 @@
 # ================= IMPORTY =================
 import time
-import os
+import os # wbudowana biblioteka os
 import random
 import urllib.parse
 from datetime import datetime
@@ -17,50 +17,39 @@ from curl_cffi import requests as req_vinted
 from google import genai
 from google.genai import types
 
+# ================= KONFIGURACJA KLUCZY I MODELI =================
+
 # Wczytuje dane z pliku .env
 load_dotenv()
 
-# Pobiera klucz i przypisuje do zmiennej
-moje_api = os.getenv("MOJE_API_KEY")
+API_KEYS_POOL = [os.getenv("GEMINI_API_KEY_1"), os.getenv("GEMINI_API_KEY_2"), os.getenv("GEMINI_API_KEY_3"), os.getenv("GEMINI_API_KEY_4"), os.getenv("GEMINI_API_KEY_5")]
 
-print("Mój klucz to:", moje_api)
-
-# ================= KONFIGURACJA KLUCZY I MODELI =================
-
-# 👇 TUTAJ WKLEJ SWOJE KLUCZE (Im więcej, tym lepiej - np. 3-5 sztuk)
-API_KEYS_POOL = []
+API_KEYS_POOL = [klucz for klucz in API_KEYS_POOL if klucz] # jeśli klucz = None, wyrzuca z listy
 
 # Modele do rotacji (od najlepszego)
 MODELS_POOL = [
-    "gemini-3-flash-preview",   # Najnowszy (Limit 20)
+    "gemini-3-flash-preview", # Najnowszy (Limit 20)
+    "gemini-2.5-pro", # limit 1000
     "gemini-2.5-flash",         # Standard (Limit 20)
-    "gemini-2.5-flash-lite",    # Wersja lekka (Limit 20)
+    "gemini-2.5-flash-lite", # Wersja lekka (Limit 20)
 ]
 
 # Konfiguracja Webhooków Discord
-WEBHOOK_OLX = ""
-WEBHOOK_VINTED = WEBHOOK_OLX
+
+WEBHOOK_OLX = os.getenv("WEBHOOK_OLX")
+
+WEBHOOK_VINTED = os.getenv("WEBHOOK_VINTED")
+
 PLIK_HISTORII = "historia_rotacja.txt"
 
 # Prompt dla AI
 SYSTEM_INSTRUCTION = """
-Jesteś ekspertem resellu. Specjalizacja: Mangi, Warhammer i Maskotki (Jellycat).
+Jesteś ekspertem resellu. Specjalizacja: Mangi
 
 Twoim zadaniem jest ocena okazji na podstawie zdjęcia, opisu i ceny.
 
 ZASADY OCENY:
-1. WARHAMMER:
-   - Szukaj: Dużych zestawów, figurek w wypraskach (nieposklejane), "Pile of Shame" (niepomalowane).
-   - Omijaj: Źle sklejone, "zalane" grubą warstwą farby figurki (chyba że cena jest śmiesznie niska).
-   - Decyzja: Dużo plastiku za małą cenę -> WARTO.
-
-2. JELLYCAT (Maskotki):
-   - Szukaj: Charakterystycznych zwierząt (króliki, owoce, warzywa) z metkami.
-   - Omijaj: Podróbki (krzywe szwy, dziwne oczy).
-   - Cena < 30 zł za oryginał -> Zawsze WARTO.
-
-3. MANGA:
-   - Kompletne serie lub ciągi tomów w dobrej cenie. Jeśli uważasz że opłaca się kupić pod resell to WARTO
+   - Kompletne serie lub ciągi tomów w dobrej cenie. Jeśli uważasz że opłaca się kupić pod resell to WARTO.
 
 Odpowiedz w formacie:
 DECYZJA: [WARTO / RYZYKO / NIE WARTO]
@@ -69,18 +58,32 @@ POWÓD: [Krótka analiza]
 """
 
 # --- LINKI DO OBSERWOWANIA ---
-URLS_OLX = [
-    "https://www.olx.pl/muzyka-edukacja/ksiazki/komiksy/q-manga-mangi/?search%5Bfilter_float_price%3Afrom%5D=100&search%5Border%5D=created_at%3Adesc"
-]
+URLS_OLX = ["https://www.olx.pl/muzyka-edukacja/ksiazki/komiksy/q-manga-mangi/?search%5Bfilter_float_price%3Afrom%5D=100&search%5Border%5D=created_at%3Adesc"]
 
 URLS_VINTED = ["https://www.vinted.pl/catalog?search_text=manga&order=newest_first&currency=PLN&catalog[]=2312&price_from=100"]
+
 # User-Agenty
 OLX_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    # Windows - Chrome
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    # Windows - Edge
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0",
+    # Windows - Firefox
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    # Mac - Safari
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
+    # Mac - Chrome
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    # Linux - Firefox
+    "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0"
 ]
 
+czy_pierwsze_uruchomienie = True
+
+
 # ================= MANAGER KLUCZY (ROTACJA) =================
+#Zrozumiane
 class KeyManager:
     def __init__(self, keys, models):
         self.keys = keys
@@ -91,7 +94,9 @@ class KeyManager:
         self._refresh_client()
 
     def _refresh_client(self):
-        """Tworzy klienta dla obecnego klucza"""
+        if not self.keys:
+            raise ValueError("Lista kluczy API jest pusta!")
+
         current_key = self.keys[self.current_key_idx]
         self._client = genai.Client(api_key=current_key)
         print(f"🔑 Używam klucza nr {self.current_key_idx + 1} (końcówka: ...{current_key[-4:]}) | Model: {self.models[self.current_model_idx]}")
@@ -101,25 +106,23 @@ class KeyManager:
 
     def rotate(self):
         """Zmienia konfigurację po błędzie"""
-        print("   🔄 Rotacja! Przełączam na następną opcję...")
+        print("Rotacja! Przełączam na następną opcję...")
         
         # 1. Najpierw próbujemy zmienić model na tym samym kluczu
         self.current_model_idx += 1
+
+        # 2. Jeśli modele się skończyły, zmieniamy klucz
         if self.current_model_idx >= len(self.models):
-            # 2. Jeśli modele się skończyły, zmieniamy klucz
             self.current_model_idx = 0
             self.current_key_idx += 1
             
             # 3. Jeśli klucze się skończyły, wracamy do pierwszego
             if self.current_key_idx >= len(self.keys):
                 self.current_key_idx = 0
-                print("   ⚠️ Przelecieliśmy wszystkie klucze! Robię 60s pauzy...")
+                print("Przelecieliśmy wszystkie klucze! Robię 60s pauzy...")
                 time.sleep(60)
-            
-            self._refresh_client() # Nowy klucz = nowy klient
-            return True
-        
-        print(f"   ➡️ Zmiana modelu na: {self.models[self.current_model_idx]}")
+
+        self._refresh_client() # Nowy klucz = nowy klient
         return True
 
 # Inicjalizacja managera
@@ -214,8 +217,8 @@ def analiza_ai(tytul, cena, opis, img_url):
             retry_errors = ["429", "RESOURCE_EXHAUSTED", "404", "503", "UNAVAILABLE", "overloaded", "quota"]
             
             if any(x in error_msg for x in retry_errors):
-                print(f"   ⚠️ Błąd {model_id} (Próba {attempt+1}/{max_retries})...")
-                print("   🔄 Przełączam klucz/model i ponawiam TO SAMO ogłoszenie...")
+                print(f"Błąd {model_id} (Próba {attempt+1}/{max_retries})...")
+                print("Przełączam klucz/model i ponawiam TO SAMO ogłoszenie...")
                 
                 manager.rotate() # Zmieniamy klucz
                 time.sleep(1)    # Krótki oddech (1s)
@@ -228,12 +231,7 @@ def analiza_ai(tytul, cena, opis, img_url):
     # Jeśli pętla się skończyła i żaden klucz nie zadziałał:
     return "Błąd: Wszystkie klucze/modele zawiodły."
 
-czy_pierwsze_uruchomienie = True
 
-# ================= LOGIKA OLX =================
-# ================= POPRAWIONA FUNKCJA OLX =================
-# ================= FILTRACJA OLX (TYLKO "WARTO") =================
-# ================= FILTRACJA OLX (TYLKO "WARTO") =================
 def sprawdz_olx(historia):
     print("🔵 [OLX] Skanuję...")
     session = req_olx.Session()
@@ -269,7 +267,7 @@ def sprawdz_olx(historia):
 
                     historia.add(link)
                     zapisz_link(link)
-                    print(f"   --> OLX [NOWE]: {price} | {title[:30]}")
+                    print(f"OLX [NOWE]: {price} | {title[:30]}")
 
                     if not czy_pierwsze_uruchomienie:
                         pelny_opis = pobierz_detale_olx(session, link)
@@ -279,17 +277,17 @@ def sprawdz_olx(historia):
                         # === OSTRY FILTR: TYLKO "WARTO" ===
                         # 1. Odrzucamy "NIE WARTO"
                         if "NIE WARTO" in werdykt_upper:
-                            print(f"      🗑️ Odrzucone (Nie warto): {title[:20]}...")
+                            print(f"Odrzucone (Nie warto): {title[:20]}...")
                             continue
                         
                         # 2. Odrzucamy "RYZYKO" (Tego chciałeś)
                         if "RYZYKO" in werdykt_upper:
-                            print(f"      🗑️ Odrzucone (Ryzyko): {title[:20]}...")
+                            print(f"Odrzucone (Ryzyko): {title[:20]}...")
                             continue
 
                         # 3. Dla pewności: sprawdzamy czy w ogóle jest słowo "WARTO"
                         if "WARTO" not in werdykt_upper:
-                            print(f"      ❓ AI bredzi (brak decyzji): {title[:20]}...")
+                            print(f"AI bredzi (brak decyzji): {title[:20]}...")
                             continue
 
                         # Jeśli kod doszedł tutaj, to znaczy że jest to PEWNIAK
@@ -307,15 +305,15 @@ def sprawdz_olx(historia):
                             }]
                         }
                         
-                        print("      ✅ WYSYŁAM POWIADOMIENIE (PEWNIAK)!")
+                        print("WYSYŁAM POWIADOMIENIE (PEWNIAK)!")
                         req_olx.post(WEBHOOK_OLX, json=payload)
                         time.sleep(2)
 
                 except Exception as e: 
-                    print(f"⚠️ Błąd OLX: {e}")
+                    print(f"Błąd OLX: {e}")
                     continue
             time.sleep(random.uniform(2, 4))
-        except Exception as e: print(f"❌ Błąd OLX URL: {e}")
+        except Exception as e: print(f"Błąd OLX URL: {e}")
     return historia
 
 # ================= LOGIKA VINTED =================
@@ -411,7 +409,7 @@ def sprawdz_vinted(historia):
 # ================= START =================
 def main():
     global czy_pierwsze_uruchomienie
-    print("🚀 MEGA BOT (OLX + VINTED + MULTI-KEY) STARTUJE...")
+    print("BOT OLX + VINTED STARTUJE...")
     historia = wczytaj_historie()
 
     while True:
@@ -426,7 +424,7 @@ def main():
         wait = random.uniform(30, 60)
         print(f"💤 Czekam {int(wait)}s...\n")
         time.sleep(wait)
-
+# Sprawdzamy czy bot ma w ogóle rozpocząć działanie
 if __name__ == "__main__":
     try:
         main()
