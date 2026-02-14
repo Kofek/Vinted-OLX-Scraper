@@ -1,0 +1,1 @@
+"Projekt automatyzuje proces monitorowania popularnych serwisów ogłoszeniowych. Bot w czasie rzeczywistym analizuje ceny rynkowe i powiadamia o ofertach poniżej średniej wartości

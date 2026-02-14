@@ -38,7 +38,7 @@ MODELS_POOL = [
 ]
 
 # Konfiguracja Webhooków Discord
-WEBHOOK_OLX = "https://discord.com/api/webhooks/1470037335520317513/V2my1EOXPSV6TMRK7y8CEFvg-YR-y3HJhHeyejzoguIDWX-_X2UgXCKYVnKhMNsrm4wX"
+WEBHOOK_OLX = ""
 WEBHOOK_VINTED = WEBHOOK_OLX
 PLIK_HISTORII = "historia_rotacja.txt"
 
