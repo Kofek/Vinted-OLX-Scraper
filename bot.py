@@ -22,7 +22,7 @@ from google.genai import types
 # Wczytuje dane z pliku .env
 load_dotenv()
 
-API_KEYS_POOL = [os.getenv("GEMINI_API_KEY_1"), os.getenv("GEMINI_API_KEY_2"), os.getenv("GEMINI_API_KEY_3"), os.getenv("GEMINI_API_KEY_4"), os.getenv("GEMINI_API_KEY_5")]
+API_KEYS_POOL = [os.getenv("GEMINI_API_KEY_1"), os.getenv("GEMINI_API_KEY_2"), os.getenv("GEMINI_API_KEY_3"), os.getenv("GEMINI_API_KEY_4"), os.getenv("GEMINI_API_KEY_5"), os.getenv("GEMINI_API_KEY_6"), os.getenv("GEMINI_API_KEY_7"), os.getenv("GEMINI_API_KEY_8")]
 
 API_KEYS_POOL = [klucz for klucz in API_KEYS_POOL if klucz] # jeśli klucz = None, wyrzuca z listy
 
@@ -322,29 +322,45 @@ def sprawdz_olx(historia):
 # ================= FILTRACJA VINTED (TYLKO "WARTO") =================
 # ================= FILTRACJA VINTED (TYLKO "WARTO") =================
 def sprawdz_vinted(historia):
-    print("🔴 [VINTED] Skanuję...")
-    session = req_vinted.Session(impersonate="chrome124")
-    session.headers.update({
-        "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer": "https://www.vinted.pl/"
-    })
+    print("[VINTED] Skanuję...")
+    wybrana_przegladarka = random.choice(["chrome124"]) #chrome120"
+    session = req_vinted.Session(impersonate=wybrana_przegladarka)
 
     try:
-        if 'access_token_web' not in session.cookies: 
-            session.get("https://www.vinted.pl/", timeout=10)
-    except: pass
+        # Pusty strzał w mało znaczącą podstronę (np. polityka prywatności lub konkretny tag)
+        # To często omija najtwardsze filtry Datadome dla strony głównej!
+        session.get("https://www.vinted.pl/help/15-polityka-prywatnosci", timeout=10)
+        time.sleep(random.uniform(2.5, 4.0))
+    except:
+        pass
 
     for url in URLS_VINTED:
         try:
             resp = session.get(url, timeout=10)
+
+            # === KLUCZOWY MOMENT: OBSŁUGA 403 ===
+            if resp.status_code == 403:
+                print(f"Vinted BŁĄD 403 ({wybrana_przegladarka})!")
+
+                # DIAGNOSTYKA: Sprawdzamy, czy to twardy ban, czy Captcha/Datadome Challenge
+                if "datadome" in resp.text.lower() or "captcha" in resp.text.lower():
+                    print("   🚨 Wykryto wyzwanie JavaScript od Datadome! Skrypt poległ na weryfikacji JS.")
+                else:
+                    print("   🚨 Twarda blokada nagłówków/TLS.")
+
+                print("Ubijam sesję, niszczę ciasteczka i robię 2 minuty przerwy...")
+                session.close()
+                time.sleep(120)
+                return historia
+
             if resp.status_code != 200: 
-                print(f"⚠️ Vinted BŁĄD: {resp.status_code}")
+                print(f"Vinted BŁĄD: {resp.status_code}")
                 continue
                 
             soup = BeautifulSoup(resp.text, 'html.parser')
             items = soup.find_all('div', {'data-testid': 'grid-item'})
 
-            if len(items) == 0: print("⚠️ Vinted: Pusta lista (Captcha?)")
+            if len(items) == 0: print("Vinted: Pusta lista (Captcha?)")
 
             for item in items[:15]:
                 try:
@@ -365,7 +381,7 @@ def sprawdz_vinted(historia):
 
                     historia.add(link)
                     zapisz_link(link)
-                    print(f"    --> VINTED [NOWE]: {price} | {title}")
+                    print(f"VINTED [NOWE]: {price} | {title}")
 
                     if not czy_pierwsze_uruchomienie:
                         pelny_opis = pobierz_detale_vinted(session, link)
@@ -374,15 +390,15 @@ def sprawdz_vinted(historia):
 
                         # === OSTRY FILTR ===
                         if "NIE WARTO" in werdykt_upper:
-                            print(f"      🗑️ Odrzucone (Nie warto): {title[:20]}...")
+                            print(f"Odrzucone (Nie warto): {title[:20]}...")
                             continue
                         
                         if "RYZYKO" in werdykt_upper:
-                            print(f"      🗑️ Odrzucone (Ryzyko): {title[:20]}...")
+                            print(f"Odrzucone (Ryzyko): {title[:20]}...")
                             continue
 
                         if "WARTO" not in werdykt_upper:
-                            print(f"      ❓ AI bredzi: {title[:20]}...")
+                            print(f"AI bredzi: {title[:20]}...")
                             continue
                         
                         # Tylko PEWNIAKI przechodzą dalej
@@ -392,18 +408,18 @@ def sprawdz_vinted(historia):
                             "embeds": [{
                                 "title": f"💎 {title}", 
                                 "url": link, 
-                                "color": color,
-                                "description": f"**Cena:** `{price}`\n**Sprzedawca:** {owner}\n\n🤖 **Gemini:**\n{werdykt_ai}",
+                                    "color": color,
+                                    "description": f"**Cena:** `{price}`\n**Sprzedawca:** {owner}\n\n🤖 **Gemini:**\n{werdykt_ai}",
                                 "thumbnail": {"url": img},
                                 "footer": {"text": f"Vinted Bot (Pewniaki) • {datetime.now().strftime('%H:%M:%S')}"}
                             }]
                         }
-                        print("      ✅ WYSYŁAM POWIADOMIENIE (PEWNIAK)!")
+                        print("WYSYŁAM POWIADOMIENIE (PEWNIAK)!")
                         req_olx.post(WEBHOOK_VINTED, json=payload)
                         time.sleep(3)
                 except Exception: continue
             time.sleep(random.uniform(5, 10)) # Zwiększyłem lekko czas dla Vinted, bo jest więcej kategorii
-        except Exception as e: print(f"❌ Błąd Vinted: {e}")
+        except Exception as e: print(f"Błąd Vinted: {e}")
     return historia
 
 # ================= START =================
@@ -415,7 +431,7 @@ def main():
     while True:
         historia = sprawdz_olx(historia)
         time.sleep(5)
-        historia = sprawdz_vinted(historia)
+        historia = sprawdz_vinted(historia) ## NA RAZIE WYLACZONY VINTED
 
         if czy_pierwsze_uruchomienie:
             print("✅ Baza załadowana. Czekam na nowości.")
