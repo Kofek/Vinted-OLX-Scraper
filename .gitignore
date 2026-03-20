@@ -1,3 +1,5 @@
 .env
 venv/
 historia_rotacja.txt
+venv
+.idea
