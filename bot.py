@@ -2,6 +2,7 @@
 import time
 import os # wbudowana biblioteka os
 import random
+import json
 import urllib.parse
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -17,52 +18,71 @@ from curl_cffi import requests as req_vinted
 from google import genai
 from google.genai import types
 
-# ================= KONFIGURACJA KLUCZY I MODELI =================
-
-# Wczytuje dane z pliku .env
 load_dotenv()
 
-API_KEYS_POOL = [os.getenv("GEMINI_API_KEY_1"), os.getenv("GEMINI_API_KEY_2"), os.getenv("GEMINI_API_KEY_3"), os.getenv("GEMINI_API_KEY_4"), os.getenv("GEMINI_API_KEY_5"), os.getenv("GEMINI_API_KEY_6"), os.getenv("GEMINI_API_KEY_7"), os.getenv("GEMINI_API_KEY_8")]
+def validate_config():
+    API_KEYS_RAW = os.getenv("GEMINI_API_KEYS", "")
+    MODELS_POOL_RAW = os.getenv("MODELS_POOL", "")
 
-API_KEYS_POOL = [klucz for klucz in API_KEYS_POOL if klucz] # jeśli klucz = None, wyrzuca z listy
+    API_KEYS = [key.strip() for key in API_KEYS_RAW.split(",") if key.strip()]
+    MODELS_POOL = [model.strip() for model in MODELS_POOL_RAW.split(",") if model.strip()]
 
-# Modele do rotacji (od najlepszego)
-MODELS_POOL = [
-    "gemini-3-flash-preview", # Najnowszy (Limit 20)
-    "gemini-2.5-pro", # limit 1000
-    "gemini-2.5-flash",         # Standard (Limit 20)
-    "gemini-2.5-flash-lite", # Wersja lekka (Limit 20)
-]
+    errors = []
+    if not API_KEYS: errors.append("❌ Missing GEMINI_API_KEYS in .env")
+    if not MODELS_POOL: errors.append("❌ Missing MODELS_POOL in .env")
 
-# Konfiguracja Webhooków Discord
+    categories = []
+    try:
+        with open('config.json', 'r', encoding='utf-8') as config_file:
+            config_data = json.load(config_file)
+            categories_raw = config_data.get("categories", [])
 
-WEBHOOK_OLX = os.getenv("WEBHOOK_OLX")
+            if not categories_raw:
+                errors.append("❌ No categories found in config.json")
 
-WEBHOOK_VINTED = os.getenv("WEBHOOK_VINTED")
+            for idx, cat in enumerate(categories_raw):
+                required_fields = ["name", "history_file", "prompt_file", "webhook"]
+                for field in required_fields:
+                    if field not in cat:
+                        errors.append(
+                            f"❌ Category at index {idx} [{cat.get('name', 'Unknown')}] is missing field: '{field}'")
 
-PLIK_HISTORII = "historia_rotacja.txt"
+                # Ładowanie promptu z pliku .txt do pamięci
+                prompt_path = cat.get("prompt_file")
+                if prompt_path:
+                    try:
+                        with open(prompt_path, 'r', encoding='utf-8') as prompt_file:
+                            cat["system_instruction"] = prompt_file.read()
+                    except FileNotFoundError:
+                        errors.append(f"❌ Prompt file not found: {prompt_path}")
 
-# Prompt dla AI
-SYSTEM_INSTRUCTION = """
-Jesteś ekspertem resellu. Specjalizacja: Mangi
+                categories.append(cat)
 
-Twoim zadaniem jest ocena okazji na podstawie zdjęcia, opisu i ceny.
+    except FileNotFoundError:
+        errors.append("❌ config.json file not found!")
+    except json.JSONDecodeError:
+        errors.append("❌ Syntax error in config.json! Check commas and quotes.")
 
-ZASADY OCENY:
-   - Kompletne serie lub ciągi tomów w dobrej cenie. Jeśli uważasz że opłaca się kupić pod resell to WARTO.
+    if errors:
+        print("\n" + "!" * 40)
+        print("CRITICAL CONFIGURATION ERRORS:")
+        for error in errors:
+            print(error)
+        print("!" * 40 + "\n")
+        exit(1)
 
-Odpowiedz w formacie:
-DECYZJA: [WARTO / RYZYKO / NIE WARTO]
-RYNEK: [Szacowana cena rynkowa]
-POWÓD: [Krótka analiza]
-"""
+    # --- 4. SUCCESS REPORT ---
+    print("-" * 35)
+    print(f"✅ CONFIGURATION VALIDATED")
+    print(f"🔑 API Keys:    {len(API_KEYS)}")
+    print(f"🧠 AI Models:   {len(MODELS_POOL)}")
+    print(f"📂 Categories:  {len(categories)}")
+    print("-" * 35)
 
-# --- LINKI DO OBSERWOWANIA ---
-URLS_OLX = ["https://www.olx.pl/muzyka-edukacja/ksiazki/komiksy/q-manga-mangi/?search%5Bfilter_float_price%3Afrom%5D=100&search%5Border%5D=created_at%3Adesc"]
+    return API_KEYS, MODELS_POOL, categories
 
-URLS_VINTED = ["https://www.vinted.pl/catalog?search_text=manga&order=newest_first&currency=PLN&catalog[]=2312&price_from=100"]
+API_KEYS_POOL, MODELS_POOL, CATEGORIES = validate_config()
 
-# User-Agenty
 OLX_AGENTS = [
     # Windows - Chrome
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -79,11 +99,8 @@ OLX_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0"
 ]
 
-czy_pierwsze_uruchomienie = True
+is_first_run = True
 
-
-# ================= MANAGER KLUCZY (ROTACJA) =================
-#Zrozumiane
 class KeyManager:
     def __init__(self, keys, models):
         self.keys = keys
@@ -94,150 +111,131 @@ class KeyManager:
         self._refresh_client()
 
     def _refresh_client(self):
-        if not self.keys:
-            raise ValueError("Lista kluczy API jest pusta!")
-
         current_key = self.keys[self.current_key_idx]
         self._client = genai.Client(api_key=current_key)
-        print(f"🔑 Używam klucza nr {self.current_key_idx + 1} (końcówka: ...{current_key[-4:]}) | Model: {self.models[self.current_model_idx]}")
+        print(f"🔄 Switched to Key #{self.current_key_idx + 1} | Model: {self.models[self.current_model_idx]}")
 
     def get_client_and_model(self):
         return self._client, self.models[self.current_model_idx]
 
     def rotate(self):
-        """Zmienia konfigurację po błędzie"""
-        print("Rotacja! Przełączam na następną opcję...")
-        
-        # 1. Najpierw próbujemy zmienić model na tym samym kluczu
+        print("🔄 Rotation! Switching models/keys...")
+
         self.current_model_idx += 1
 
-        # 2. Jeśli modele się skończyły, zmieniamy klucz
         if self.current_model_idx >= len(self.models):
             self.current_model_idx = 0
             self.current_key_idx += 1
-            
-            # 3. Jeśli klucze się skończyły, wracamy do pierwszego
+
             if self.current_key_idx >= len(self.keys):
                 self.current_key_idx = 0
-                print("Przelecieliśmy wszystkie klucze! Robię 60s pauzy...")
+                self.current_model_idx = 0
+                print("⚠️ All keys and models exhausted! Cooling down for 60s...")
                 time.sleep(60)
 
-        self._refresh_client() # Nowy klucz = nowy klient
+        self._refresh_client()
         return True
 
-# Inicjalizacja managera
 manager = KeyManager(API_KEYS_POOL, MODELS_POOL)
 
-# ================= FUNKCJE POMOCNICZE =================
-def wczytaj_historie():
-    if not os.path.exists(PLIK_HISTORII): return set()
-    with open(PLIK_HISTORII, "r", encoding="utf-8") as f:
-        return set(line.strip() for line in f)
+def load_history(file_path):
+    if not os.path.exists(file_path):
+        return set()
+    with open(file_path, "r", encoding="utf-8") as file:
+        return set(line.strip() for line in file)
 
-def zapisz_link(link):
-    with open(PLIK_HISTORII, "a", encoding="utf-8") as f:
-        f.write(link + "\n")
+def save_link(link, file_path):
+    directory = os.path.dirname(file_path)
 
-def czy_swieze_ogloszenie(tekst_daty):
-    if not tekst_daty: return False
-    tekst_daty = tekst_daty.lower()
-    swieze_slowa = ['dzisiaj', 'minut', 'godz', 'sekund', 'teraz', 'chwil']
-    return any(slowo in tekst_daty for slowo in swieze_slowa)
+    # Jeśli podano folder i ten folder nie istnieje, stwórz go automatycznie
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+
+    with open(file_path, "a", encoding="utf-8") as file:
+        file.write(link + "\n")
+
+def is_fresh_listing(date_text):
+    if not date_text: return False
+    date_text = date_text.lower()
+    fresh_words = ['dzisiaj', 'minut', 'godz', 'sekund', 'teraz', 'chwil']
+    return any(word in date_text for word in fresh_words)
 
 # ================= SCRAPING DETALI =================
-def pobierz_detale_olx(session, url):
+def fetch_olx_details(session, url):
     try:
         time.sleep(random.uniform(0.5, 1.0))
         resp = session.get(url, timeout=5)
         soup = BeautifulSoup(resp.text, 'html.parser')
         desc_div = soup.find('div', {'data-cy': 'ad_description'})
-        return desc_div.text.strip() if desc_div else "Brak opisu"
-    except: return "Brak opisu (błąd)"
+        return desc_div.text.strip() if desc_div else "No description"
+    except: return "No description (Error)"
 
-def pobierz_detale_vinted(session, url):
+def fetch_vinted_details(session, url):
     try:
         time.sleep(random.uniform(1.0, 2.0))
         resp = session.get(url, timeout=5)
         soup = BeautifulSoup(resp.text, 'html.parser')
         desc_div = soup.find('div', {'itemprop': 'description'})
-        return desc_div.text.strip() if desc_div else "Brak opisu"
-    except: return "Brak opisu (błąd)"
+        return desc_div.text.strip() if desc_div else "No description"
+    except: return "No description (Error)"
 
-# ================= ANALIZA AI Z ROTACJĄ =================
-def analiza_ai(tytul, cena, opis, img_url):
-    """
-    Analizuje ofertę. 
-    Jak model rzuci błędem (429/503), zmienia klucz i NATYCHMIAST ponawia próbę dla tego samego ogłoszenia.
-    """
-    
-    # Obliczamy ile mamy łącznie szans (liczba kluczy * liczba modeli) + mały zapas
+
+# ================= AI ANALYSIS =================
+def analyze_ai(title, price, description, img_url, system_instruction):
     max_retries = len(API_KEYS_POOL) * len(MODELS_POOL) + 2
-    
-    # Przygotowanie danych (robimy to raz przed pętlą, żeby nie marnować czasu)
-    prompt_text = f"Tytuł: {tytul}\nCena Kupna: {cena}\nOpis: {opis}\nWaluta: PLN."
+    prompt_text = f"Tytuł: {title}\nCena Kupna: {price}\nOpis: {description}\nWaluta: PLN."
     image_data = None
-    
-    # Pobieranie zdjęcia raz, trzymamy w pamięci
+
     if img_url and img_url.startswith('http'):
         try:
             img_resp = req_olx.get(img_url, timeout=5)
             if img_resp.status_code == 200:
-                # Wczytujemy do RAM
                 image_data = Image.open(BytesIO(img_resp.content))
-        except: 
+        except:
             pass
 
-    # === PĘTLA UPORU ===
     for attempt in range(max_retries):
         client, model_id = manager.get_client_and_model()
-        
         try:
-            # Budujemy treść zapytania (tekst + zdjęcie jeśli jest)
             contents = [prompt_text]
             if image_data:
                 contents.append(image_data)
 
-            # Strzał do AI
             response = client.models.generate_content(
                 model=model_id,
                 contents=contents,
                 config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
+                    system_instruction=system_instruction,
                     temperature=0.1
                 )
             )
-            
-            # Jak się uda, zwracamy wynik i kończymy funkcję (SUKCES)
             return response.text
 
         except Exception as e:
             error_msg = str(e)
-            
-            # Lista błędów, przy których WARTO próbować jeszcze raz na innym koncie
             retry_errors = ["429", "RESOURCE_EXHAUSTED", "404", "503", "UNAVAILABLE", "overloaded", "quota"]
-            
+
             if any(x in error_msg for x in retry_errors):
-                print(f"Błąd {model_id} (Próba {attempt+1}/{max_retries})...")
-                print("Przełączam klucz/model i ponawiam TO SAMO ogłoszenie...")
-                
-                manager.rotate() # Zmieniamy klucz
-                time.sleep(1)    # Krótki oddech (1s)
-                continue         # <--- KLUCZOWE: Wracamy na początek pętli z TYM SAMYM ogłoszeniem!
-            
+                manager.rotate()
+                time.sleep(1)
+                continue
             else:
-                # Jeśli to inny błąd (np. zły format danych), nie ma sensu ponawiać
-                return f"Błąd krytyczny AI: {e}"
+                return f"AI Error: {e}"
 
-    # Jeśli pętla się skończyła i żaden klucz nie zadziałał:
-    return "Błąd: Wszystkie klucze/modele zawiodły."
+    return "Error: All keys/models failed."
 
+# ================= OLX LOGIC =================
+def check_olx(history, category):
+    cat_name = category.get("name", "Unknown")
+    webhook_url = category.get("webhook")
+    history_file = category.get("history_file")
+    ai_prompt = category.get("system_instruction", "")
 
-def sprawdz_olx(historia):
-    print("🔵 [OLX] Skanuję...")
+    print(f"🔵 [OLX - {cat_name}] Scanning...")
     session = req_olx.Session()
     session.headers.update({"User-Agent": random.choice(OLX_AGENTS)})
 
-    for url in URLS_OLX:
+    for url in category.get("urls_olx", []):
         try:
             resp = session.get(url, timeout=10)
             if resp.status_code != 200: continue
@@ -252,115 +250,88 @@ def sprawdz_olx(historia):
                     link = "https://www.olx.pl" + href if href.startswith('/') else href
                     link = link.split("#")[0]
 
-                    if link in historia: continue
+                    if link in history: continue
 
-                    date_loc = "Brak danych"
+                    date_loc = "No data"
                     date_tag = card.find('p', {'data-testid': 'location-date'})
                     if date_tag: date_loc = date_tag.text.strip()
 
-                    if not czy_pierwsze_uruchomienie and not czy_swieze_ogloszenie(date_loc):
+                    if not is_first_run and not is_fresh_listing(date_loc):
                         continue
 
-                    title = card.find('h6').text.strip() if card.find('h6') else (card.find('h4').text.strip() if card.find('h4') else "Bez tytułu")
-                    price = card.find('p', {'data-testid': 'ad-price'}).text.strip() if card.find('p', {'data-testid': 'ad-price'}) else "???"
+                    title = card.find('h6').text.strip() if card.find('h6') else (
+                        card.find('h4').text.strip() if card.find('h4') else "No title")
+                    price = card.find('p', {'data-testid': 'ad-price'}).text.strip() if card.find('p', {
+                        'data-testid': 'ad-price'}) else "???"
                     img = card.find('img').get('src') if card.find('img') else ""
 
-                    historia.add(link)
-                    zapisz_link(link)
-                    print(f"OLX [NOWE]: {price} | {title[:30]}")
+                    history.add(link)
+                    save_link(link, history_file)
+                    print(f"OLX [NEW in {cat_name}]: {price} | {title[:30]}")
 
-                    if not czy_pierwsze_uruchomienie:
-                        pelny_opis = pobierz_detale_olx(session, link)
-                        werdykt_ai = analiza_ai(title, price, pelny_opis, img)
-                        werdykt_upper = werdykt_ai.upper()
+                    if not is_first_run:
+                        full_desc = fetch_olx_details(session, link)
+                        ai_verdict = analyze_ai(title, price, full_desc, img, ai_prompt)
+                        ai_verdict_upper = ai_verdict.upper()
 
-                        # === OSTRY FILTR: TYLKO "WARTO" ===
-                        # 1. Odrzucamy "NIE WARTO"
-                        if "NIE WARTO" in werdykt_upper:
-                            print(f"Odrzucone (Nie warto): {title[:20]}...")
-                            continue
-                        
-                        # 2. Odrzucamy "RYZYKO" (Tego chciałeś)
-                        if "RYZYKO" in werdykt_upper:
-                            print(f"Odrzucone (Ryzyko): {title[:20]}...")
+                        if "NIE WARTO" in ai_verdict_upper or "RYZYKO" in ai_verdict_upper or "WARTO" not in ai_verdict_upper:
                             continue
 
-                        # 3. Dla pewności: sprawdzamy czy w ogóle jest słowo "WARTO"
-                        if "WARTO" not in werdykt_upper:
-                            print(f"AI bredzi (brak decyzji): {title[:20]}...")
-                            continue
-
-                        # Jeśli kod doszedł tutaj, to znaczy że jest to PEWNIAK
-                        color = 5763719 # Zielony
-
-                        teraz = datetime.now().strftime("%H:%M")
                         payload = {
                             "embeds": [{
-                                "title": f"💎 {title}", # Dodaję diamencik do tytułu
-                                "url": link, 
-                                "color": color,
-                                "description": f"**Cena:** `{price}`\n**Lokalizacja:** {date_loc}\n\n🤖 **Gemini:**\n{werdykt_ai}",
+                                "title": f"💎 {title}",
+                                "url": link,
+                                "color": 5763719,
+                                "description": f"**Cena:** `{price}`\n**Lokalizacja:** {date_loc}\n\n🤖 **Gemini:**\n{ai_verdict}",
                                 "thumbnail": {"url": img},
-                                "footer": {"text": f"OLX Bot (Pewniaki) • {teraz}"}
+                                "footer": {"text": f"OLX Bot ({cat_name}) • {datetime.now().strftime('%H:%M')}"}
                             }]
                         }
-                        
-                        print("WYSYŁAM POWIADOMIENIE (PEWNIAK)!")
-                        req_olx.post(WEBHOOK_OLX, json=payload)
-                        time.sleep(2)
 
-                except Exception as e: 
-                    print(f"Błąd OLX: {e}")
+                        if webhook_url:
+                            print(f"SENDING NOTIFICATION -> {cat_name}!")
+                            req_olx.post(webhook_url, json=payload)
+                            time.sleep(2)
+
+                except Exception as e:
                     continue
             time.sleep(random.uniform(2, 4))
-        except Exception as e: print(f"Błąd OLX URL: {e}")
-    return historia
+        except Exception as e:
+            print(f"OLX URL Error: {e}")
+    return history
 
-# ================= LOGIKA VINTED =================
-# ================= POPRAWIONA LOGIKA VINTED =================
-# ================= LOGIKA VINTED (STARA WERSJA + UPDATE) =================
-# ================= FILTRACJA VINTED (TYLKO "WARTO") =================
-# ================= FILTRACJA VINTED (TYLKO "WARTO") =================
-def sprawdz_vinted(historia):
-    print("[VINTED] Skanuję...")
-    wybrana_przegladarka = random.choice(["chrome124"]) #chrome120"
-    session = req_vinted.Session(impersonate=wybrana_przegladarka)
+
+# ================= VINTED LOGIC =================
+def check_vinted(history, category):
+    cat_name = category.get("name", "Unknown")
+    webhook_url = category.get("webhook")
+    history_file = category.get("history_file")
+    ai_prompt = category.get("system_instruction", "")
+
+    print(f"🔴 [VINTED - {cat_name}] Scanning...")
+    browser = random.choice(["chrome124"])
+    session = req_vinted.Session(impersonate=browser)
 
     try:
-        # Pusty strzał w mało znaczącą podstronę (np. polityka prywatności lub konkretny tag)
-        # To często omija najtwardsze filtry Datadome dla strony głównej!
         session.get("https://www.vinted.pl/help/15-polityka-prywatnosci", timeout=10)
         time.sleep(random.uniform(2.5, 4.0))
     except:
         pass
 
-    for url in URLS_VINTED:
+    for url in category.get("urls_vinted", []):
         try:
             resp = session.get(url, timeout=10)
 
-            # === KLUCZOWY MOMENT: OBSŁUGA 403 ===
             if resp.status_code == 403:
-                print(f"Vinted BŁĄD 403 ({wybrana_przegladarka})!")
-
-                # DIAGNOSTYKA: Sprawdzamy, czy to twardy ban, czy Captcha/Datadome Challenge
-                if "datadome" in resp.text.lower() or "captcha" in resp.text.lower():
-                    print("   🚨 Wykryto wyzwanie JavaScript od Datadome! Skrypt poległ na weryfikacji JS.")
-                else:
-                    print("   🚨 Twarda blokada nagłówków/TLS.")
-
-                print("Ubijam sesję, niszczę ciasteczka i robię 2 minuty przerwy...")
+                print(f"Vinted 403 ERROR ({browser})! Session killed, pausing 2 mins.")
                 session.close()
                 time.sleep(120)
-                return historia
+                return history
 
-            if resp.status_code != 200: 
-                print(f"Vinted BŁĄD: {resp.status_code}")
-                continue
-                
+            if resp.status_code != 200: continue
+
             soup = BeautifulSoup(resp.text, 'html.parser')
             items = soup.find_all('div', {'data-testid': 'grid-item'})
-
-            if len(items) == 0: print("Vinted: Pusta lista (Captcha?)")
 
             for item in items[:15]:
                 try:
@@ -368,81 +339,85 @@ def sprawdz_vinted(historia):
                     if not a_tag: continue
                     link = a_tag.get('href')
                     if not link.startswith("http"): link = "https://www.vinted.pl" + link
-                    if link in historia: continue
+                    if link in history: continue
 
                     price = "???"
                     for s in item.stripped_strings:
                         if "zł" in s: price = s; break
-                    
-                    owner = item.find('div', {'data-testid': 'box-user-login'}).text.strip() if item.find('div', {'data-testid': 'box-user-login'}) else "Ukryty"
+
+                    owner_div = item.find('div', {'data-testid': 'box-user-login'})
+                    owner = owner_div.text.strip() if owner_div else "Hidden"
                     img_tag = item.find('img')
                     img = img_tag.get('src') if img_tag else ""
-                    title = img_tag.get('alt')[:60] if img_tag and img_tag.get('alt') else "Przedmiot Vinted"
+                    title = img_tag.get('alt')[:60] if img_tag and img_tag.get('alt') else "Vinted Item"
 
-                    historia.add(link)
-                    zapisz_link(link)
-                    print(f"VINTED [NOWE]: {price} | {title}")
+                    history.add(link)
+                    save_link(link, history_file)
+                    print(f"VINTED [NEW in {cat_name}]: {price} | {title}")
 
-                    if not czy_pierwsze_uruchomienie:
-                        pelny_opis = pobierz_detale_vinted(session, link)
-                        werdykt_ai = analiza_ai(title, price, pelny_opis, img)
-                        werdykt_upper = werdykt_ai.upper()
+                    if not is_first_run:
+                        full_desc = fetch_vinted_details(session, link)
+                        ai_verdict = analyze_ai(title, price, full_desc, img, ai_prompt)
+                        ai_verdict_upper = ai_verdict.upper()
 
-                        # === OSTRY FILTR ===
-                        if "NIE WARTO" in werdykt_upper:
-                            print(f"Odrzucone (Nie warto): {title[:20]}...")
+                        if "NIE WARTO" in ai_verdict_upper or "RYZYKO" in ai_verdict_upper or "WARTO" not in ai_verdict_upper:
                             continue
-                        
-                        if "RYZYKO" in werdykt_upper:
-                            print(f"Odrzucone (Ryzyko): {title[:20]}...")
-                            continue
-
-                        if "WARTO" not in werdykt_upper:
-                            print(f"AI bredzi: {title[:20]}...")
-                            continue
-                        
-                        # Tylko PEWNIAKI przechodzą dalej
-                        color = 5763719
 
                         payload = {
                             "embeds": [{
-                                "title": f"💎 {title}", 
-                                "url": link, 
-                                    "color": color,
-                                    "description": f"**Cena:** `{price}`\n**Sprzedawca:** {owner}\n\n🤖 **Gemini:**\n{werdykt_ai}",
+                                "title": f"💎 {title}",
+                                "url": link,
+                                "color": 5763719,
+                                "description": f"**Cena:** `{price}`\n**Sprzedawca:** {owner}\n\n🤖 **Gemini:**\n{ai_verdict}",
                                 "thumbnail": {"url": img},
-                                "footer": {"text": f"Vinted Bot (Pewniaki) • {datetime.now().strftime('%H:%M:%S')}"}
+                                "footer": {"text": f"Vinted Bot ({cat_name}) • {datetime.now().strftime('%H:%M:%S')}"}
                             }]
                         }
-                        print("WYSYŁAM POWIADOMIENIE (PEWNIAK)!")
-                        req_olx.post(WEBHOOK_VINTED, json=payload)
-                        time.sleep(3)
-                except Exception: continue
-            time.sleep(random.uniform(5, 10)) # Zwiększyłem lekko czas dla Vinted, bo jest więcej kategorii
-        except Exception as e: print(f"Błąd Vinted: {e}")
-    return historia
 
-# ================= START =================
+                        if webhook_url:
+                            print(f"SENDING NOTIFICATION -> {cat_name}!")
+                            req_olx.post(webhook_url, json=payload)
+                            time.sleep(3)
+                except Exception:
+                    continue
+            time.sleep(random.uniform(5, 10))
+        except Exception as e:
+            print(f"Vinted Error: {e}")
+    return history
+
+
+# ================= MAIN LOOP =================
 def main():
-    global czy_pierwsze_uruchomienie
-    print("BOT OLX + VINTED STARTUJE...")
-    historia = wczytaj_historie()
+    global is_first_run
+    print("🚀 BOT STARTING...")
 
     while True:
-        historia = sprawdz_olx(historia)
-        time.sleep(5)
-        historia = sprawdz_vinted(historia) ## NA RAZIE WYLACZONY VINTED
+        for cat in CATEGORIES:
+            cat_name = cat.get("name", "Unknown")
+            history_file = cat.get("history_file")
 
-        if czy_pierwsze_uruchomienie:
-            print("✅ Baza załadowana. Czekam na nowości.")
-            czy_pierwsze_uruchomienie = False
+            print(f"\n📂 --- Processing Category: {cat_name} ---")
+            history = load_history(history_file)
 
-        wait = random.uniform(30, 60)
-        print(f"💤 Czekam {int(wait)}s...\n")
-        time.sleep(wait)
-# Sprawdzamy czy bot ma w ogóle rozpocząć działanie
+            if cat.get("urls_olx"):
+                history = check_olx(history, cat)
+                time.sleep(3)
+
+            if cat.get("urls_vinted"):
+                history = check_vinted(history, cat)
+                time.sleep(3)
+
+        if is_first_run:
+            print("\n✅ Initial databases loaded. Waiting for new items.")
+            is_first_run = False
+
+        wait_time = random.uniform(30, 60)
+        print(f"\n💤 Waiting {int(wait_time)}s...\n")
+        time.sleep(wait_time)
+
+
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("🛑 Zatrzymano.")
+        print("\n🛑 Stopped by user.")
