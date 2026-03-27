@@ -1,5 +1,6 @@
 .env
-venv/
-historia_rotacja.txt
-venv
+.venv
 .idea
+data
+prompts
+config.json
