@@ -1,6 +1,41 @@
-.env
-.venv
-.idea
-data
-prompts
-config.json
+# IDE / Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ================= BACKEND =================
+backend/.env
+backend/.venv/
+backend/config.json
+backend/data/
+backend/prompts/
+
+# Python cache
+backend/__pycache__/
+backend/**/*.pyc
+
+# ================= FRONTEND =================
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Local overrides
+*.local

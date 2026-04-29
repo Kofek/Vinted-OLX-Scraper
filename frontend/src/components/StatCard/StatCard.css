@@ -1,0 +1,50 @@
+/* Kontener karty */
+.stat-card {
+    width: 250px;
+    height: 150px;
+    padding: 30px;
+    border-radius: 8px; /* Lekkie zaokrąglenie rogów */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-start; /* Tekst wyrównany do lewej */
+    gap: 12px;
+    min-height: 160px;
+    box-sizing: border-box
+  }
+  
+  /* Wariant jasny (Active Count) */
+  .stat-card.light {
+    background-color: #EAECEB; /* Jasny szary / ecru */
+    color: #1A261D; /* Ciemna zieleń dla tekstu */
+  }
+  
+  /* Wariant ciemny (Total Items Found) */
+  .stat-card.dark {
+    background-color: #1A261D; /* Bardzo ciemna, butelkowa zieleń */
+    color: #FFFFFF; /* Biały tekst */
+  }
+  
+  /* Etykieta (Górny napis) */
+  .stat-label {
+    font-family: 'Georgia', serif; /* Czcionka szeryfowa jak na obrazku */
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px; /* Rozstrzelone litery */
+    opacity: 0.8;
+  }
+  
+  /* Wariant ciemny etykiety (lekko oliwkowy kolor tekstu) */
+  .stat-card.dark .stat-label {
+    color: #8D9688;
+  }
+  
+  /* Wartość (Duża liczba) */
+  .stat-value {
+    font-family: 'Arial Black', 'Inter', sans-serif; /* Bardzo gruba czcionka bezszeryfowa */
+    font-size: 56px;
+    font-weight: 900;
+    margin: 0;
+    line-height: 1;
+  }
