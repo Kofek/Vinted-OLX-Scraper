@@ -2,15 +2,21 @@ from fastapi import FastAPI
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+import os
 import json
+
+load_dotenv()
 
 app = FastAPI(title="BotVinted API")
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "config.json"
+CORS_ORIGINS_RAW = os.getenv("BACKEND_ALLOWED_ORIGINS", "http://localhost:5173")
+CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS_RAW.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

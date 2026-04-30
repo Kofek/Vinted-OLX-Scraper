@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import StatCard from "../components/StatCard/StatCard";
 import "./MyBotsPage.css";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+
 type ApiStatus = {
   botRunning: boolean;
   categoriesCount: number;
@@ -19,7 +21,7 @@ export default function MyBotsPage() {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/status");
+        const response = await fetch(`${API_BASE_URL}/api/status`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
