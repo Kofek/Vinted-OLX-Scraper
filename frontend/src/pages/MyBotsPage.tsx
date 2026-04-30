@@ -36,6 +36,11 @@ export default function MyBotsPage() {
     };
 
     fetchStatus();
+    const intervalId = window.setInterval(fetchStatus, 10_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   return (
