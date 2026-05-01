@@ -53,6 +53,9 @@ def init_ai(api_keys_pool, models_pool):
     manager = KeyManager(API_KEYS_POOL, MODELS_POOL)
 
 def analyze_ai(title, price, description, img_url, system_instruction):
+    if manager is None:
+        return "AI Error: manager not initialized. Call init_ai() first."
+
     max_retries = len(API_KEYS_POOL) * len(MODELS_POOL) + 2
     prompt_text = f"Tytuł: {title}\nCena Kupna: {price}\nOpis: {description}\nWaluta: PLN."
     image_data = None
