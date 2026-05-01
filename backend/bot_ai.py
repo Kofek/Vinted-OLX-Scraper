@@ -61,7 +61,9 @@ def analyze_ai(title, price, description, img_url, system_instruction):
         try:
             img_resp = req_olx.get(img_url, timeout=5)
             if img_resp.status_code == 200:
-                image_data = Image.open(BytesIO(img_resp.content))
+                with BytesIO(img_resp.content) as img_buffer:
+                    with Image.open(img_buffer) as img:
+                        image_data = img.copy()
         except:
             pass
 
