@@ -10,12 +10,13 @@ import json
 app = FastAPI(title="BotVinted API")
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "config.json"
+
+load_dotenv(BASE_DIR / ".env")
+
 CORS_ORIGINS_RAW = os.getenv("BACKEND_ALLOWED_ORIGINS", "http://localhost:5173")
 CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS_RAW.split(",") if origin.strip()]
 STATUS_PATH = BASE_DIR / "data" / "state" / "bot_status.json"
 BOT_STATUS_STALE_SECONDS = int(os.getenv("BOT_STATUS_STALE_SECONDS", "90"))
-
-load_dotenv(BASE_DIR / ".env")
 
 app.add_middleware(
     CORSMiddleware,
