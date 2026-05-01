@@ -19,6 +19,7 @@ from google import genai
 from google.genai import types
 
 from bot_config import validate_config
+from bot_history import load_history, save_link
 from bot_status import utc_now_iso, write_bot_status
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -81,22 +82,6 @@ class KeyManager:
         return True
 
 manager = KeyManager(API_KEYS_POOL, MODELS_POOL)
-
-def load_history(file_path):
-    if not os.path.exists(file_path):
-        return set()
-    with open(file_path, "r", encoding="utf-8") as file:
-        return set(line.strip() for line in file)
-
-def save_link(link, file_path):
-    directory = os.path.dirname(file_path)
-
-    # Jeśli podano folder i ten folder nie istnieje, stwórz go automatycznie
-    if directory and not os.path.exists(directory):
-        os.makedirs(directory)
-
-    with open(file_path, "a", encoding="utf-8") as file:
-        file.write(link + "\n")
 
 def is_fresh_listing(date_text):
     if not date_text: return False
