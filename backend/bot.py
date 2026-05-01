@@ -69,8 +69,9 @@ def validate_config():
     if not MODELS_POOL: errors.append("❌ Missing MODELS_POOL in .env")
 
     categories = []
+    config_path = BASE_DIR / "config.json"
     try:
-        with open('config.json', 'r', encoding='utf-8') as config_file:
+        with config_path.open('r', encoding='utf-8') as config_file:
             config_data = json.load(config_file)
             categories_raw = config_data.get("categories", [])
 
@@ -85,13 +86,18 @@ def validate_config():
                             f"❌ Category at index {idx} [{cat.get('name', 'Unknown')}] is missing field: '{field}'")
 
                 # Ładowanie promptu z pliku .txt do pamięci
-                prompt_path = cat.get("prompt_file")
-                if prompt_path:
+                prompt_path_raw = cat.get("prompt_file")
+                if prompt_path_raw:
+                    prompt_path = BASE_DIR / prompt_path_raw
                     try:
-                        with open(prompt_path, 'r', encoding='utf-8') as prompt_file:
+                        with prompt_path.open('r', encoding='utf-8') as prompt_file:
                             cat["system_instruction"] = prompt_file.read()
                     except FileNotFoundError:
-                        errors.append(f"❌ Prompt file not found: {prompt_path}")
+                        errors.append(f"❌ Prompt file not found: {prompt_path_raw}")
+
+                history_file_raw = cat.get("history_file")
+                if history_file_raw:
+                    cat["history_file"] = str((BASE_DIR / history_file_raw).resolve())
 
                 categories.append(cat)
 
