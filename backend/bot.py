@@ -6,18 +6,13 @@ import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from bs4 import BeautifulSoup
-from io import BytesIO
-from PIL import Image
 from dotenv import load_dotenv
 
 # Biblioteki sieciowe
 import requests as req_olx
 from curl_cffi import requests as req_vinted
 
-# Biblioteka AI (Nowe SDK)
-from google import genai
-from google.genai import types
-
+from bot_ai import analyze_ai, init_ai
 from bot_config import validate_config
 from bot_history import load_history, save_link
 from bot_status import utc_now_iso, write_bot_status
@@ -27,6 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 API_KEYS_POOL, MODELS_POOL, CATEGORIES = validate_config(BASE_DIR)
+init_ai(API_KEYS_POOL, MODELS_POOL)
 
 OLX_AGENTS = [
     # Windows - Chrome
@@ -45,43 +41,6 @@ OLX_AGENTS = [
 ]
 
 is_first_run = True
-
-class KeyManager:
-    def __init__(self, keys, models):
-        self.keys = keys
-        self.models = models
-        self.current_key_idx = 0
-        self.current_model_idx = 0
-        self._client = None
-        self._refresh_client()
-
-    def _refresh_client(self):
-        current_key = self.keys[self.current_key_idx]
-        self._client = genai.Client(api_key=current_key)
-        print(f"🔄 Switched to Key #{self.current_key_idx + 1} | Model: {self.models[self.current_model_idx]}")
-
-    def get_client_and_model(self):
-        return self._client, self.models[self.current_model_idx]
-
-    def rotate(self):
-        print("🔄 Rotation! Switching models/keys...")
-
-        self.current_model_idx += 1
-
-        if self.current_model_idx >= len(self.models):
-            self.current_model_idx = 0
-            self.current_key_idx += 1
-
-            if self.current_key_idx >= len(self.keys):
-                self.current_key_idx = 0
-                self.current_model_idx = 0
-                print("⚠️ All keys and models exhausted! Cooling down for 60s...")
-                time.sleep(60)
-
-        self._refresh_client()
-        return True
-
-manager = KeyManager(API_KEYS_POOL, MODELS_POOL)
 
 def is_fresh_listing(date_text):
     if not date_text: return False
@@ -108,50 +67,6 @@ def fetch_vinted_details(session, url):
         return desc_div.text.strip() if desc_div else "No description"
     except: return "No description (Error)"
 
-
-# ================= AI ANALYSIS =================
-def analyze_ai(title, price, description, img_url, system_instruction):
-    max_retries = len(API_KEYS_POOL) * len(MODELS_POOL) + 2
-    prompt_text = f"Tytuł: {title}\nCena Kupna: {price}\nOpis: {description}\nWaluta: PLN."
-    image_data = None
-
-    if img_url and img_url.startswith('http'):
-        try:
-            img_resp = req_olx.get(img_url, timeout=5)
-            if img_resp.status_code == 200:
-                image_data = Image.open(BytesIO(img_resp.content))
-        except:
-            pass
-
-    for attempt in range(max_retries):
-        client, model_id = manager.get_client_and_model()
-        try:
-            contents = [prompt_text]
-            if image_data:
-                contents.append(image_data)
-
-            response = client.models.generate_content(
-                model=model_id,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    temperature=0.1
-                )
-            )
-            return response.text
-
-        except Exception as e:
-            error_msg = str(e)
-            retry_errors = ["429", "RESOURCE_EXHAUSTED", "404", "503", "UNAVAILABLE", "overloaded", "quota"]
-
-            if any(x in error_msg for x in retry_errors):
-                manager.rotate()
-                time.sleep(1)
-                continue
-            else:
-                return f"AI Error: {e}"
-
-    return "Error: All keys/models failed."
 
 # ================= OLX LOGIC =================
 def check_olx(history, category):
