@@ -67,8 +67,8 @@ def analyze_ai(title, price, description, img_url, system_instruction):
                 with BytesIO(img_resp.content) as img_buffer:
                     with Image.open(img_buffer) as img:
                         image_data = img.copy()
-        except:
-            pass
+        except Exception as e:
+            print(f"AI Image Fetch Error: {e}")
 
     for attempt in range(max_retries):
         client, model_id = manager.get_client_and_model()

@@ -56,7 +56,8 @@ def fetch_olx_details(session, url):
         soup = BeautifulSoup(resp.text, 'html.parser')
         desc_div = soup.find('div', {'data-cy': 'ad_description'})
         return desc_div.text.strip() if desc_div else "No description"
-    except: return "No description (Error)"
+    except Exception:
+        return "No description (Error)"
 
 def fetch_vinted_details(session, url):
     try:
@@ -65,7 +66,8 @@ def fetch_vinted_details(session, url):
         soup = BeautifulSoup(resp.text, 'html.parser')
         desc_div = soup.find('div', {'itemprop': 'description'})
         return desc_div.text.strip() if desc_div else "No description"
-    except: return "No description (Error)"
+    except Exception:
+        return "No description (Error)"
 
 
 # ================= OLX LOGIC =================
@@ -138,6 +140,7 @@ def check_olx(history, category):
                             time.sleep(2)
 
                 except Exception as e:
+                    print(f"OLX Item Error [{cat_name}]: {e}")
                     continue
             time.sleep(random.uniform(2, 4))
         except Exception as e:
@@ -159,8 +162,8 @@ def check_vinted(history, category):
     try:
         session.get("https://www.vinted.pl/help/15-polityka-prywatnosci", timeout=10)
         time.sleep(random.uniform(2.5, 4.0))
-    except:
-        pass
+    except Exception as e:
+        print(f"Vinted Warmup Error [{cat_name}]: {e}")
 
     for url in category.get("urls_vinted", []):
         try:
@@ -222,7 +225,8 @@ def check_vinted(history, category):
                             print(f"SENDING NOTIFICATION -> {cat_name}!")
                             req_olx.post(webhook_url, json=payload)
                             time.sleep(3)
-                except Exception:
+                except Exception as e:
+                    print(f"Vinted Item Error [{cat_name}]: {e}")
                     continue
             time.sleep(random.uniform(5, 10))
         except Exception as e:
