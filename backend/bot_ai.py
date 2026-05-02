@@ -1,3 +1,4 @@
+import logging
 import time
 from io import BytesIO
 
@@ -5,6 +6,8 @@ import requests as req_olx
 from PIL import Image
 from google import genai
 from google.genai import types
+
+logger = logging.getLogger(__name__)
 
 API_KEYS_POOL = []
 MODELS_POOL = []
@@ -23,13 +26,13 @@ class KeyManager:
     def _refresh_client(self):
         current_key = self.keys[self.current_key_idx]
         self._client = genai.Client(api_key=current_key)
-        print(f"🔄 Switched to Key #{self.current_key_idx + 1} | Model: {self.models[self.current_model_idx]}")
+        logger.info(f"🔄 Switched to Key #{self.current_key_idx + 1} | Model: {self.models[self.current_model_idx]}")
 
     def get_client_and_model(self):
         return self._client, self.models[self.current_model_idx]
 
     def rotate(self):
-        print("🔄 Rotation! Switching models/keys...")
+        logger.info("🔄 Rotation! Switching models/keys...")
 
         self.current_model_idx += 1
 
@@ -40,7 +43,7 @@ class KeyManager:
             if self.current_key_idx >= len(self.keys):
                 self.current_key_idx = 0
                 self.current_model_idx = 0
-                print("⚠️ All keys and models exhausted! Cooling down for 60s...")
+                logger.warning("⚠️ All keys and models exhausted! Cooling down for 60s...")
                 time.sleep(60)
 
         self._refresh_client()
@@ -68,7 +71,7 @@ def analyze_ai(title, price, description, img_url, system_instruction):
                     with Image.open(img_buffer) as img:
                         image_data = img.copy()
         except Exception as e:
-            print(f"AI Image Fetch Error: {e}")
+            logger.warning(f"AI Image Fetch Error: {e}")
 
     for attempt in range(max_retries):
         client, model_id = manager.get_client_and_model()
@@ -99,5 +102,3 @@ def analyze_ai(title, price, description, img_url, system_instruction):
                 return f"AI Error: {e}"
 
     return "Error: All keys/models failed."
-
-

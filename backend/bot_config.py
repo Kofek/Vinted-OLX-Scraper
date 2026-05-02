@@ -1,7 +1,9 @@
 import json
+import logging
 import os
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 
 def validate_config(base_dir: Path):
     API_KEYS_RAW = os.getenv("GEMINI_API_KEYS", "")
@@ -54,19 +56,18 @@ def validate_config(base_dir: Path):
         errors.append("❌ Syntax error in config.json! Check commas and quotes.")
 
     if errors:
-        print("\n" + "!" * 40)
-        print("CRITICAL CONFIGURATION ERRORS:")
-        for error in errors:
-            print(error)
-        print("!" * 40 + "\n")
+        errors_text = "\n".join(errors)
+        logger.critical(
+            f"Configuration failed:\n{'!' * 40}\n{errors_text}\n{'!' * 40}",
+        )
         exit(1)
 
     # --- 4. SUCCESS REPORT ---
-    print("-" * 35)
-    print(f"✅ CONFIGURATION VALIDATED")
-    print(f"🔑 API Keys:    {len(API_KEYS)}")
-    print(f"🧠 AI Models:   {len(MODELS_POOL)}")
-    print(f"📂 Categories:  {len(categories)}")
-    print("-" * 35)
+    logger.info("-" * 35)
+    logger.info("✅ CONFIGURATION VALIDATED")
+    logger.info(f"🔑 API Keys:    {len(API_KEYS)}")
+    logger.info(f"🧠 AI Models:   {len(MODELS_POOL)}")
+    logger.info(f"📂 Categories:  {len(categories)}")
+    logger.info("-" * 35)
 
     return API_KEYS, MODELS_POOL, categories

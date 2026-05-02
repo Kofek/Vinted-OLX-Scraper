@@ -1,4 +1,5 @@
 # ================= IMPORTY =================
+import logging
 import time
 import os # wbudowana biblioteka os
 import random
@@ -8,6 +9,13 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
+from logging_config import configure_logging
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+configure_logging()
+logger = logging.getLogger(__name__)
+
 # Biblioteki sieciowe
 import requests as req_olx
 from curl_cffi import requests as req_vinted
@@ -16,10 +24,6 @@ from bot_ai import analyze_ai, init_ai
 from bot_config import validate_config
 from bot_history import load_history, save_link
 from bot_status import utc_now_iso, write_bot_status
-
-BASE_DIR = Path(__file__).resolve().parent
-
-load_dotenv(BASE_DIR / ".env")
 
 API_KEYS_POOL, MODELS_POOL, CATEGORIES = validate_config(BASE_DIR)
 init_ai(API_KEYS_POOL, MODELS_POOL)
@@ -77,7 +81,7 @@ def check_olx(history, category):
     history_file = category.get("history_file")
     ai_prompt = category.get("system_instruction", "")
 
-    print(f"🔵 [OLX - {cat_name}] Scanning...")
+    logger.info(f"🔵 [OLX - {cat_name}] Scanning...")
     session = req_olx.Session()
     session.headers.update({"User-Agent": random.choice(OLX_AGENTS)})
 
@@ -113,7 +117,7 @@ def check_olx(history, category):
 
                     history.add(link)
                     save_link(link, history_file)
-                    print(f"OLX [NEW in {cat_name}]: {price} | {title[:30]}")
+                    logger.info(f"OLX [NEW in {cat_name}]: {price} | {title[:30]}")
 
                     if not is_first_run:
                         full_desc = fetch_olx_details(session, link)
@@ -135,16 +139,16 @@ def check_olx(history, category):
                         }
 
                         if webhook_url:
-                            print(f"SENDING NOTIFICATION -> {cat_name}!")
+                            logger.info(f"SENDING NOTIFICATION -> {cat_name}!")
                             req_olx.post(webhook_url, json=payload)
                             time.sleep(2)
 
                 except Exception as e:
-                    print(f"OLX Item Error [{cat_name}]: {e}")
+                    logger.warning(f"OLX Item Error [{cat_name}]: {e}")
                     continue
             time.sleep(random.uniform(2, 4))
         except Exception as e:
-            print(f"OLX URL Error: {e}")
+            logger.warning(f"OLX URL Error: {e}")
     return history
 
 
@@ -155,7 +159,7 @@ def check_vinted(history, category):
     history_file = category.get("history_file")
     ai_prompt = category.get("system_instruction", "")
 
-    print(f"🔴 [VINTED - {cat_name}] Scanning...")
+    logger.info(f"🔴 [VINTED - {cat_name}] Scanning...")
     browser = random.choice(["chrome124"])
     session = req_vinted.Session(impersonate=browser)
 
@@ -163,14 +167,14 @@ def check_vinted(history, category):
         session.get("https://www.vinted.pl/help/15-polityka-prywatnosci", timeout=10)
         time.sleep(random.uniform(2.5, 4.0))
     except Exception as e:
-        print(f"Vinted Warmup Error [{cat_name}]: {e}")
+        logger.warning(f"Vinted Warmup Error [{cat_name}]: {e}")
 
     for url in category.get("urls_vinted", []):
         try:
             resp = session.get(url, timeout=10)
 
             if resp.status_code == 403:
-                print(f"Vinted 403 ERROR ({browser})! Session killed, pausing 2 mins.")
+                logger.warning(f"Vinted 403 ERROR ({browser})! Session killed, pausing 2 mins.")
                 session.close()
                 time.sleep(120)
                 return history
@@ -200,7 +204,7 @@ def check_vinted(history, category):
 
                     history.add(link)
                     save_link(link, history_file)
-                    print(f"VINTED [NEW in {cat_name}]: {price} | {title}")
+                    logger.info(f"VINTED [NEW in {cat_name}]: {price} | {title}")
 
                     if not is_first_run:
                         full_desc = fetch_vinted_details(session, link)
@@ -222,22 +226,22 @@ def check_vinted(history, category):
                         }
 
                         if webhook_url:
-                            print(f"SENDING NOTIFICATION -> {cat_name}!")
+                            logger.info(f"SENDING NOTIFICATION -> {cat_name}!")
                             req_olx.post(webhook_url, json=payload)
                             time.sleep(3)
                 except Exception as e:
-                    print(f"Vinted Item Error [{cat_name}]: {e}")
+                    logger.warning(f"Vinted Item Error [{cat_name}]: {e}")
                     continue
             time.sleep(random.uniform(5, 10))
         except Exception as e:
-            print(f"Vinted Error: {e}")
+            logger.warning(f"Vinted Error: {e}")
     return history
 
 
 # ================= MAIN LOOP =================
 def main():
     global is_first_run
-    print("🚀 BOT STARTING...")
+    logger.info("🚀 BOT STARTING...")
     write_bot_status(running=True, last_started_utc=utc_now_iso(), last_stopped_utc=None)
 
     while True:
@@ -246,7 +250,7 @@ def main():
             cat_name = cat.get("name", "Unknown")
             history_file = cat.get("history_file")
 
-            print(f"\n📂 --- Processing Category: {cat_name} ---")
+            logger.info(f"\n📂 --- Processing Category: {cat_name} ---")
             history = load_history(history_file)
 
             if cat.get("urls_olx"):
@@ -258,11 +262,11 @@ def main():
                 time.sleep(3)
 
         if is_first_run:
-            print("\n✅ Initial databases loaded. Waiting for new items.")
+            logger.info("\n✅ Initial databases loaded. Waiting for new items.")
             is_first_run = False
 
         wait_time = random.uniform(30, 60)
-        print(f"\n💤 Waiting {int(wait_time)}s...\n")
+        logger.info(f"\n💤 Waiting {int(wait_time)}s...\n")
         time.sleep(wait_time)
 
 
@@ -271,7 +275,9 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         write_bot_status(running=False, last_stopped_utc=utc_now_iso())
-        print("\n🛑 Stopped by user.")
+        logger.info("\n🛑 Stopped by user.")
     except Exception:
         write_bot_status(running=False, last_stopped_utc=utc_now_iso())
+        logger.exception("Bot terminated with an error")
         raise
+
