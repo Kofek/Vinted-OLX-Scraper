@@ -14,7 +14,7 @@ from logging_config import configure_logging
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 configure_logging()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(Path(__file__).stem)
 
 # Biblioteki sieciowe
 import requests as req_olx
@@ -250,7 +250,7 @@ def main():
             cat_name = cat.get("name", "Unknown")
             history_file = cat.get("history_file")
 
-            logger.info(f"\n📂 --- Processing Category: {cat_name} ---")
+            logger.info(f"📂 --- Processing Category: {cat_name} ---")
             history = load_history(history_file)
 
             if cat.get("urls_olx"):

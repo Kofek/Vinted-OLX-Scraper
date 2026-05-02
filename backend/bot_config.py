@@ -55,7 +55,7 @@ def validate_config(base_dir: Path):
     except json.JSONDecodeError:
         errors.append("❌ Syntax error in config.json! Check commas and quotes.")
 
-    if errors:
+    if errors:  
         errors_text = "\n".join(errors)
         logger.critical(
             f"Configuration failed:\n{'!' * 40}\n{errors_text}\n{'!' * 40}",
@@ -63,11 +63,15 @@ def validate_config(base_dir: Path):
         exit(1)
 
     # --- 4. SUCCESS REPORT ---
-    logger.info("-" * 35)
-    logger.info("✅ CONFIGURATION VALIDATED")
-    logger.info(f"🔑 API Keys:    {len(API_KEYS)}")
-    logger.info(f"🧠 AI Models:   {len(MODELS_POOL)}")
-    logger.info(f"📂 Categories:  {len(categories)}")
-    logger.info("-" * 35)
+    sep = "-" * 35
+    logger.info(
+        f"\n"
+        f"{sep}\n"
+        f"✅ CONFIGURATION VALIDATED\n"
+        f"🔑 API Keys:    {len(API_KEYS)}\n"
+        f"🧠 AI Models:   {len(MODELS_POOL)}\n"
+        f"📂 Categories:  {len(categories)}\n"
+        f"{sep}"
+    )
 
     return API_KEYS, MODELS_POOL, categories
