@@ -6,7 +6,7 @@ DEFAULT_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 
 class HeaderThenMessageFormatter(logging.Formatter):
-        def format(self, record):
+    def format(self, record):
         timestamp_text  = self.formatTime(record, self.datefmt)
         header = f"{timestamp_text } | {record.levelname:8s} | {record.name}"
         body = record.getMessage()
