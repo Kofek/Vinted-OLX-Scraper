@@ -49,3 +49,86 @@
     font-size: 14px;
     color: var(--text-muted);
   }
+
+.bots-grid {
+  margin-top: 32px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.bot-card {
+  border: 1px solid var(--border-color, #d8d8d8);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--bg-card, #fff);
+}
+
+.bot-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.bot-source {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bot-status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.bot-status.running {
+  background: #e8f7ea;
+  color: #1d6b2b;
+}
+
+.bot-status.paused {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.bot-name {
+  margin: 12px 0 10px;
+  font-size: 22px;
+}
+
+.bot-meta {
+  margin: 6px 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.empty-state {
+  margin-top: 20px;
+  color: var(--text-muted);
+}
+
+.pagination {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pagination button {
+  border: 1px solid var(--border-color, #d8d8d8);
+  background: transparent;
+  color: inherit;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
