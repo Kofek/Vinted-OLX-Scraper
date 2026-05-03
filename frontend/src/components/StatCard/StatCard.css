@@ -1,50 +1,52 @@
-/* Kontener karty */
 .stat-card {
-    width: 250px;
-    height: 150px;
-    padding: 30px;
-    border-radius: 8px; /* Lekkie zaokrąglenie rogów */
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: flex-start; /* Tekst wyrównany do lewej */
-    gap: 12px;
-    min-height: 160px;
-    box-sizing: border-box
-  }
-  
-  /* Wariant jasny (Active Count) */
-  .stat-card.light {
-    background-color: #EAECEB; /* Jasny szary / ecru */
-    color: #1A261D; /* Ciemna zieleń dla tekstu */
-  }
-  
-  /* Wariant ciemny (Total Items Found) */
-  .stat-card.dark {
-    background-color: #1A261D; /* Bardzo ciemna, butelkowa zieleń */
-    color: #FFFFFF; /* Biały tekst */
-  }
-  
-  /* Etykieta (Górny napis) */
-  .stat-label {
-    font-family: 'Georgia', serif; /* Czcionka szeryfowa jak na obrazku */
-    font-size: 14px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1.5px; /* Rozstrzelone litery */
-    opacity: 0.8;
-  }
-  
-  /* Wariant ciemny etykiety (lekko oliwkowy kolor tekstu) */
-  .stat-card.dark .stat-label {
-    color: #8D9688;
-  }
-  
-  /* Wartość (Duża liczba) */
-  .stat-value {
-    font-family: 'Arial Black', 'Inter', sans-serif; /* Bardzo gruba czcionka bezszeryfowa */
-    font-size: 56px;
-    font-weight: 900;
-    margin: 0;
-    line-height: 1;
-  }
+  box-sizing: border-box;
+  flex: 0 0 200px;
+  width: 200px;
+  min-width: 200px;
+  max-width: 200px;
+  padding: 24px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.stat-card.light {
+  background: #e7e8e7;
+  color: #061b0e;
+}
+
+.stat-card.dark {
+  background: #1b3022;
+  color: #ffffff;
+}
+
+.stat-label {
+  margin: 0;
+  font-family: "Work Sans", Inter, Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  text-wrap: balance;
+  text-transform: uppercase;
+  opacity: 0.95;
+  color: #737973;
+}
+
+.stat-card.dark .stat-label {
+  color: #819986;
+}
+
+.stat-value {
+  margin: 0;
+  font-family: Manrope, "Work Sans", Inter, Arial, sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.stat-card.dark .stat-value {
+  color: #ffffff;
+}

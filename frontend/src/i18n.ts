@@ -20,9 +20,39 @@ const resources = {
         myBotsDesc: "Monitoruj swoje boty i zarządzaj nimi.",
 
       },
+      myBots: {
+        fetch: {
+          loading: "Ładowanie listy botów…",
+          ok: "Połączono. Widocznych botów na tej stronie: {{count}}.",
+          error: "Brak połączenia z backendem. Uruchom API (FastAPI) i sprawdź endpoint /api/bots.",
+        },
+        empty: "Brak botów do wyświetlenia.",
+        labels: {
+          lastActivity: "Ostatnia aktywność",
+          itemsFound: "Znalezione pozycje",
+          successRate: "Skuteczność",
+        },
+        status: {
+          running: "Aktywny",
+          paused: "Wstrzymany",
+        },
+        actions: {
+          pause: "Pauza",
+          resume: "Wznów",
+          editAria: "Edytuj bota",
+        },
+        pagination: {
+          prev: "Poprzednia",
+          next: "Następna",
+          page: "Strona {{current}} z {{total}}",
+        },
+      },
       stats:{
-        activeCount: "LICZNIK AKTYWNYCH BOTÓW",
-        totalItems: "ŁĄCZNA LICZBA ZNALEZIONYCH PRZEDMIOTÓW"
+        activeCount: "Aktywne boty",
+        totalItems: "Przedmioty łącznie",
+      },
+      time: {
+        justNow: "Przed chwilą",
       },
       footer: {
         documentation: "Dokumentacja",
@@ -51,10 +81,39 @@ const resources = {
         eyebrow: "Dashboard",
         myBotsDesc: "Monitor your bots and manage them.",
       },
-      stats:{
-        activeCount: "ACTIVE BOTS COUNT",
-        totalItems: "TOTAL ITEMS FOUND"
-
+      myBots: {
+        fetch: {
+          loading: "Loading bots…",
+          ok: "Connected. Showing {{count}} bots on this page.",
+          error: "Backend unavailable. Start the API (FastAPI) and check /api/bots.",
+        },
+        empty: "No bots to display.",
+        labels: {
+          lastActivity: "Last Activity",
+          itemsFound: "Items Found",
+          successRate: "Success Rate",
+        },
+        status: {
+          running: "Running",
+          paused: "Paused",
+        },
+        actions: {
+          pause: "Pause",
+          resume: "Resume",
+          editAria: "Edit bot",
+        },
+        pagination: {
+          prev: "Previous",
+          next: "Next",
+          page: "Page {{current}} / {{total}}",
+        },
+      },
+      stats: {
+        activeCount: "Active bots",
+        totalItems: "Total items",
+      },
+      time: {
+        justNow: "Just now",
       },
       footer: {
         documentation: "Documentation",
