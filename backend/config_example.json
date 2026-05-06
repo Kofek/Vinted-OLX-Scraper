@@ -1,16 +1,16 @@
 {
   "categories": [
     {
-      "name": "",
-      "history_file": "",
-      "prompt_file": "",
+      "name": "Figurki POP",
+      "history_file": "data_example/historia_figurki_POP_example.txt",
+      "prompt_file": "prompts_example/prompt_figurki_POP_example.txt",
       "urls_olx": [
-        ""
+        "https://www.olx.pl/dla-dzieci/zabawki/figurki/q-POP/"
       ],
       "urls_vinted": [
-        ""
+        "https://www.vinted.pl/catalog?search_text=POP&search_id=32401110776&page=1&time=1774282122&catalog[]=3312&brand_ids[]=295656&brand_ids[]=15436642&brand_ids[]=5819193"
       ],
-      "webhook": ""
+      "webhook": "twoj_webhook_discord"
     }
   ]
 }
