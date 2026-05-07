@@ -56,7 +56,4 @@ cd backend
 .\.venv\Scripts\Activate.ps1
 python bot.py
 ```
-
-6) Screenshot dzialajacego bota:
-
-![Dzialajacy bot](./assets/bot-working.png)
+Jak bot powinien wyglądać po poprawnym uruchomieniu? Zaglądnij do backend/data_example
