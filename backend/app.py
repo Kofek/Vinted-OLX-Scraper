@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import os
 import json
 from logging_config import configure_logging
+import psycopg
 
 app = FastAPI(title="BotVinted API")
 BASE_DIR = Path(__file__).resolve().parent
@@ -29,6 +30,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 def read_json_file(path: Path, default_value):
     if not path.exists():
         return default_value
@@ -73,6 +75,52 @@ def apply_heartbeat_staleness(bot_running: bool, bot_status_message: str) -> tup
         return True, "status file loaded (heartbeat fresh)"
     except Exception:
         return False, "status stale: invalid heartbeat timestamp"
+
+def _db_error_hint(message: str):
+    """Krótkie podpowiedzi do typowych problemów z Neon / Postgres."""
+    lower = message.lower()
+    if "password authentication failed" in lower or "invalid_password" in lower:
+        return "Złe hasło użytkownika bazy — w Neon: reset hasła roli, nowy connection string do .env."
+    if "connection refused" in lower or "could not connect" in lower:
+        return "Host/port nieosiągalny — sprawdź URL, firewall; pierwsze połączenie po uśpieniu Neona może chwilę trwać."
+    if "ssl" in lower or "tls" in lower or "certificate" in lower:
+        return "SSL — w URL zostaw ?sslmode=require jak w panelu Neona."
+    if "does not exist" in lower and "database" in lower:
+        return "Zła nazwa bazy w URL — sprawdź fragment po ostatnim / (np. neondb)."
+    if "could not translate host name" in lower or "name or service not known" in lower:
+        return "DNS — literówka w hoście albo brak internetu."
+    return "Sprawdź DATABASE_URL w backend/.env i uruchomienie uvicorn z katalogu backend."
+
+@app.get("/api/db-health")
+def db_health() -> dict[str, str | bool]:
+    """SELECT 1 przez psycopg. Uruchom: python -m uvicorn app:app --reload --host 127.0.0.1 --port 8000 — sprawdź: /api/db-health"""
+    url = (os.getenv("DATABASE_URL") or "").strip()
+    if not url:
+        return {
+            "databaseOk": False,
+            "detail": "Brak zmiennej DATABASE_URL.",
+            "hint": "Dodaj DATABASE_URL do backend/.env (Connection string z Neona).",
+            "serverTimeUtc": datetime.now(timezone.utc).isoformat(),
+        }
+    try:
+        with psycopg.connect(url, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+        return {
+            "databaseOk": True,
+            "detail": "SELECT 1 OK",
+            "hint": "",
+            "serverTimeUtc": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as exc:
+        detail = str(exc)
+        return {
+            "databaseOk": False,
+            "detail": detail,
+            "hint": _db_error_hint(detail),
+            "serverTimeUtc": datetime.now(timezone.utc).isoformat(),
+        }
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
