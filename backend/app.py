@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,13 +7,12 @@ import os
 import json
 from logging_config import configure_logging
 import psycopg
+from psycopg.rows import dict_row
 
 app = FastAPI(title="BotVinted API")
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "config.json"
 
-BOTS_PATH = BASE_DIR / "data" / "bots" / "bots.json"
-RUNTIME_PATH = BASE_DIR / "data" / "bots" / "runtime.json"
 
 load_dotenv(BASE_DIR / ".env")
 configure_logging()
@@ -90,6 +89,93 @@ def _db_error_hint(message: str):
     if "could not translate host name" in lower or "name or service not known" in lower:
         return "DNS — literówka w hoście albo brak internetu."
     return "Sprawdź DATABASE_URL w backend/.env i uruchomienie uvicorn z katalogu backend."
+
+BOTS_WITH_RUNTIME_SQL = """
+SELECT
+    b.id,
+    b.name,
+    b.source,
+    b.urls_olx,
+    b.urls_vinted,
+    b.webhook_url,
+    b.prompt_text,
+    b.enabled,
+    b.history_file,
+    b.created_at_utc,
+    b.updated_at_utc,
+    r.status AS runtime_status,
+    r.last_heartbeat_utc,
+    r.last_started_utc,
+    r.last_stopped_utc,
+    r.items_found,
+    r.success_rate,
+    r.last_error
+FROM bots b
+LEFT JOIN bot_runtime r ON r.bot_id = b.id
+ORDER BY b.id
+"""
+
+def to_iso_string(value):
+    """Converts a datetime object to an ISO 8601 string in UTC."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
+
+def serialize_bot_list_item(row):
+    """
+    Maps a joined bots + bot_runtime to a camelCase dictionary formatted for the frontend API.
+    Ensures fallback values for missing fields and converts timestamps to ISO strings.
+    """
+    urls_olx = row.get("urls_olx")
+    urls_vinted = row.get("urls_vinted")
+    if not isinstance(urls_olx, list):
+        urls_olx = []
+    if not isinstance(urls_vinted, list):
+        urls_vinted = []
+
+    success_rate = row.get("success_rate")
+    if success_rate is not None:
+        success_rate = float(success_rate)
+
+    return {
+        "id": row["id"],
+        "name": row.get("name") or "Unnamed bot",
+        "source": row.get("source") or "mixed",
+        "urlsOlx": urls_olx,
+        "urlsVinted": urls_vinted,
+        "webhookUrl": row.get("webhook_url"),
+        "promptText": row.get("prompt_text") or "",
+        "enabled": bool(row.get("enabled", False)),
+        "historyFile": row.get("history_file"),
+        "createdAtUtc": to_iso_string(row.get("created_at_utc")),
+        "updatedAtUtc": to_iso_string(row.get("updated_at_utc")),
+        "runtime": {
+            "status": row.get("runtime_status") or "unknown",
+            "lastHeartbeatUtc": to_iso_string(row.get("last_heartbeat_utc")),
+            "lastStartedUtc": to_iso_string(row.get("last_started_utc")),
+            "lastStoppedUtc": to_iso_string(row.get("last_stopped_utc")),
+            "itemsFound": int(row.get("items_found") or 0),
+            "successRate": success_rate,
+            "lastError": row.get("last_error"),
+        },
+    }
+
+def fetch_bots_from_database():
+    """Fetches bots with runtime (LEFT JOIN) from PostgreSQL as camelCase dictionaries."""
+
+    url = os.getenv("DATABASE_URL", "").strip()
+    if not url:
+        raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
+    try:
+        with psycopg.connect(url, connect_timeout=10) as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(BOTS_WITH_RUNTIME_SQL)
+                rows = cur.fetchall()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+    return [serialize_bot_list_item(row) for row in rows]
 
 @app.get("/api/db-health")
 def db_health() -> dict[str, str | bool]:
@@ -172,51 +258,17 @@ def status() -> dict[str, str | bool | int | list[str]]:
         "message": "Status endpoint is connected to config and history files",
     }
 
+
 @app.get("/api/bots")
-def list_bots(page: int = Query(default=1, ge=1),pageSize: int = Query(default=6, ge=1, le=24),):
-    bots_json = read_json_file(BOTS_PATH, {"items": []})
-    bots_data = bots_json.get("items", [])
-    runtime_data = read_json_file(RUNTIME_PATH, {})
-    if not isinstance(bots_data, list):
-        bots_data = []
-    merged_bots_data = []
+def list_bots(page: int = Query(default=1, ge=1), pageSize: int = Query(default=6, ge=1, le=24)):
+    merged_bots_data = fetch_bots_from_database()
     active_bots_count = 0
     total_items_found = 0
-    for bot in bots_data:
-        bot_id = str(bot.get("id", "")).strip()
-        if not bot_id:
-            continue
-
-        runtime = runtime_data.get(bot_id, {}) if isinstance(runtime_data, dict) else {}
-        status = runtime.get("status", "unknown")
-        items_found = int(runtime.get("itemsFound", 0) or 0)
-        success_rate = runtime.get("successRate")
-        if status == "running":
+    for bot in merged_bots_data:
+        runtime = bot.get("runtime") or {}
+        if runtime.get("status") == "running":
             active_bots_count += 1
-        total_items_found += items_found
-        merged_bots_data.append(
-            {
-                "id": bot_id,
-                "name": bot.get("name", "Unnamed bot"),
-                "source": bot.get("source", "mixed"),
-                "urlsOlx": bot.get("urlsOlx", []),
-                "urlsVinted": bot.get("urlsVinted", []),
-                "webhookUrl": bot.get("webhookUrl"),
-                "enabled": bool(bot.get("enabled", False)),
-                "promptText": bot.get("promptText", ""),
-                "createdAtUtc": bot.get("createdAtUtc"),
-                "updatedAtUtc": bot.get("updatedAtUtc"),
-                "runtime": {
-                    "status": status,
-                    "lastHeartbeatUtc": runtime.get("lastHeartbeatUtc"),
-                    "lastStartedUtc": runtime.get("lastStartedUtc"),
-                    "lastStoppedUtc": runtime.get("lastStoppedUtc"),
-                    "itemsFound": items_found,
-                    "successRate": success_rate,
-                    "lastError": runtime.get("lastError"),
-                },
-            }
-        )
+        total_items_found += int(runtime.get("itemsFound") or 0)
     total_bots = len(merged_bots_data)
     total_pages = (total_bots + pageSize - 1) // pageSize if total_bots > 0 else 1
     safe_page = min(page, total_pages)
