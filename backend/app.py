@@ -1,13 +1,17 @@
 from fastapi import FastAPI, HTTPException, Query
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 import json
+import uuid
 from logging_config import configure_logging
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Json
+from pydantic import BaseModel, Field
 
 app = FastAPI(title="BotVinted API")
 BASE_DIR = Path(__file__).resolve().parent
@@ -115,6 +119,66 @@ LEFT JOIN bot_runtime r ON r.bot_id = b.id
 ORDER BY b.id
 """
 
+BOT_BY_ID_SQL = """
+SELECT
+    b.id, 
+    b.name, 
+    b.source, 
+    b.urls_olx, 
+    b.urls_vinted, 
+    b.webhook_url, 
+    b.prompt_text,
+    b.enabled, 
+    b.history_file, 
+    b.created_at_utc, 
+    b.updated_at_utc,
+    r.status AS runtime_status, 
+    r.last_heartbeat_utc, 
+    r.last_started_utc,
+    r.last_stopped_utc, 
+    r.items_found,
+    r.success_rate, 
+    r.last_error
+FROM bots b
+LEFT JOIN bot_runtime r ON r.bot_id = b.id
+WHERE b.id = %(bot_id)s
+"""
+
+INSERT_BOT_SQL = """
+INSERT INTO bots (
+    id, name, source, urls_olx, urls_vinted, webhook_url, prompt_text,
+    enabled, history_file, created_at_utc, updated_at_utc
+) VALUES (
+    %(id)s, %(name)s, %(source)s, %(urls_olx)s, %(urls_vinted)s, %(webhook_url)s,
+    %(prompt_text)s, %(enabled)s, %(history_file)s, %(created_at_utc)s, %(updated_at_utc)s
+)
+"""
+INSERT_BOT_RUNTIME_SQL = """
+INSERT INTO bot_runtime (bot_id, status, items_found)
+VALUES (%(bot_id)s, %(status)s, %(items_found)s)
+"""
+
+class CreateBotBody(BaseModel):
+    """Shape of JSON clients send when creating a bot."""
+    name: str = Field(min_length=1, max_length=255)
+    source: Literal["mixed", "olx", "vinted"] = "mixed"
+    urlsOlx: list[str] = Field(default_factory=list)
+    urlsVinted: list[str] = Field(default_factory=list)
+    webhookUrl: str = Field(min_length=1, max_length=2048)
+    promptText: str = Field(min_length=1, max_length=10000)
+    enabled: bool = True
+
+def get_database_url():
+    """Returns the DATABASE_URL from the env file."""
+    url = os.getenv("DATABASE_URL", "").strip()
+    if not url:
+        raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
+    return url
+
+def generate_bot_id():
+    """Generates a random UUID for a new bot."""
+    return f"bot_{uuid.uuid4().hex[:8]}"
+
 def to_iso_string(value):
     """Converts a datetime object to an ISO 8601 string in UTC."""
     if value is None:
@@ -165,9 +229,7 @@ def serialize_bot_list_item(row):
 def fetch_bots_from_database():
     """Fetches bots with runtime (LEFT JOIN) from PostgreSQL as camelCase dictionaries."""
 
-    url = os.getenv("DATABASE_URL", "").strip()
-    if not url:
-        raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
+    url = get_database_url()
     try:
         with psycopg.connect(url, connect_timeout=10) as conn:
             with conn.cursor(row_factory=dict_row) as cur:
@@ -176,6 +238,59 @@ def fetch_bots_from_database():
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")
     return [serialize_bot_list_item(row) for row in rows]
+
+def fetch_bot_by_id(bot_id):
+    """Returns one bot with runtime in API shape, or None if not found."""
+    url = get_database_url()
+    try:
+        with psycopg.connect(url, connect_timeout=10) as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(BOT_BY_ID_SQL, {"bot_id": bot_id})
+                row = cur.fetchone()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+    if not row:
+        return None
+    return serialize_bot_list_item(row)
+
+def create_bot_in_database(body):
+    """Inserts into bots + bot_runtime and returns the created bot for the API."""
+    bot_id = generate_bot_id()
+    now_utc = datetime.now(timezone.utc)
+    history_file = f"data/history/{bot_id}.txt"
+    urls_olx = [u.strip() for u in body.urlsOlx if isinstance(u, str) and u.strip()]
+    urls_vinted = [u.strip() for u in body.urlsVinted if isinstance(u, str) and u.strip()]
+
+    bot_row = {
+        "id": bot_id,
+        "name": body.name.strip(),
+        "source": body.source.strip()[:32],
+        "urls_olx": Json(urls_olx),
+        "urls_vinted": Json(urls_vinted),
+        "webhook_url": body.webhookUrl,
+        "prompt_text": body.promptText,
+        "enabled": body.enabled,
+        "history_file": history_file,
+        "created_at_utc": now_utc,
+        "updated_at_utc": now_utc,
+    }
+    runtime_row = {
+        "bot_id": bot_id,
+        "status": "paused",
+        "items_found": 0,
+    }
+
+    url = get_database_url()
+    try:
+        with psycopg.connect(url, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute(INSERT_BOT_SQL, bot_row)
+                cur.execute(INSERT_BOT_RUNTIME_SQL, runtime_row)
+            conn.commit()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    return fetch_bot_by_id(bot_id)
 
 @app.get("/api/db-health")
 def db_health() -> dict[str, str | bool]:
@@ -259,8 +374,15 @@ def status() -> dict[str, str | bool | int | list[str]]:
     }
 
 
+@app.post("/api/bots", status_code=201)
+def create_bot(body: CreateBotBody):
+    """Creates a new bot in Postgres (bots + bot_runtime) and returns it in API shape."""
+    return create_bot_in_database(body)
+
+
 @app.get("/api/bots")
 def list_bots(page: int = Query(default=1, ge=1), pageSize: int = Query(default=6, ge=1, le=24)):
+    """Lists bots with pagination and runtime status."""
     merged_bots_data = fetch_bots_from_database()
     active_bots_count = 0
     total_items_found = 0
