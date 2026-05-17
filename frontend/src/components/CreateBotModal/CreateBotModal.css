@@ -6,14 +6,19 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  box-sizing: border-box;
+  overflow: hidden;
   background: rgba(6, 27, 14, 0.45);
   backdrop-filter: blur(3px);
 }
 
 .create-bot-modal {
+  box-sizing: border-box;
   width: min(100%, 480px);
-  max-height: min(90vh, 720px);
-  overflow: auto;
+  max-height: min(90dvh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-radius: 12px;
   background: var(--stitch-surface-container-lowest);
   border: 1px solid color-mix(in srgb, var(--stitch-outline-variant) 18%, transparent);
@@ -21,6 +26,7 @@
 }
 
 .create-bot-modal-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -58,6 +64,12 @@
 }
 
 .create-bot-form {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 20px;
   display: flex;
   flex-direction: column;

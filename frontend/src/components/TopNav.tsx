@@ -6,7 +6,7 @@ export default function TopNav() {
 
   return (
     <header className="topnav">
-      <div className="brand">AetherScrape</div>
+      <div className="brand">MagicScraper</div>
 
       <nav className="menu">
         <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>

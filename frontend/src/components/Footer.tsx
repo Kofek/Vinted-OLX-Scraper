@@ -6,8 +6,8 @@ export default function Footer() {
   return (
     <footer className="footer">
       <div>
-        <strong>AetherScrape</strong>
-        <p>© 2024 AetherScrape Systems</p>
+        <strong>MagicScraper</strong>
+        <p>© 2024 MagicScraper</p>
       </div>
 
       <nav className="footer-links">

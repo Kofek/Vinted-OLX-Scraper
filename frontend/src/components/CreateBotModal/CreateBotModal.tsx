@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { createBot } from "../../api/bots";
 import type { CreateBotSource, CreateBotFormState, UrlListField } from "../../types/bots";
@@ -75,7 +76,23 @@ export default function CreateBotModal({ onClose, onCreated }: CreateBotModalPro
     placeholder: t("myBots.create.urlPlaceholder"),
   };
 
-  return (
+  useEffect(() => {
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
+
+    document.body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+    };
+  }, []);
+
+  return createPortal(
     <div
       className="create-bot-modal-backdrop"
       role="presentation"
@@ -198,6 +215,7 @@ export default function CreateBotModal({ onClose, onCreated }: CreateBotModalPro
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
