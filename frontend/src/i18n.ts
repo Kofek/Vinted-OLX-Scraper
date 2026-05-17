@@ -45,6 +45,7 @@ const resources = {
           prev: "Poprzednia",
           next: "Następna",
           page: "Strona {{current}} z {{total}}",
+          navAria: "Paginacja listy botów",
         },
         create: {
           openButton: "Dodaj bota",
@@ -128,6 +129,7 @@ const resources = {
           prev: "Previous",
           next: "Next",
           page: "Page {{current}} / {{total}}",
+          navAria: "Bot list pagination",
         },
         create: {
           openButton: "Add bot",

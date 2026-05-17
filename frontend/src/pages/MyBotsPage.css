@@ -132,23 +132,123 @@
   color: var(--text-muted);
 }
 
-.pagination {
-  margin-top: 20px;
+.bots-pagination-wrap {
+  margin-top: 48px;
+  padding-bottom: 8px;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.bots-pagination {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--stitch-surface-container-lowest);
+  border: 1px solid color-mix(in srgb, var(--stitch-outline-variant) 15%, transparent);
+  box-shadow: 0 4px 20px rgba(6, 27, 14, 0.03);
+}
+
+.bots-pagination__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-main);
+  font-family: "Work Sans", Inter, Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.bots-pagination__btn:hover:not(:disabled) {
+  background: var(--stitch-surface-container-low);
+}
+
+.bots-pagination__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.bots-pagination__icon {
+  flex-shrink: 0;
+}
+
+.bots-pagination__indicator {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  gap: 6px;
+  min-width: 96px;
+  min-height: 44px;
+  padding: 0 20px;
+  align-self: stretch;
+  border-left: 1px solid color-mix(in srgb, var(--stitch-outline-variant) 12%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--stitch-outline-variant) 12%, transparent);
 }
 
-.pagination button {
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
+.bots-pagination__current,
+.bots-pagination__sep,
+.bots-pagination__total {
+  font-family: Manrope, "Work Sans", Inter, Arial, sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.bots-pagination__current {
   color: var(--text-main);
-  padding: 6px 12px;
-  border-radius: 8px;
-  cursor: pointer;
 }
 
-.pagination button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.bots-pagination__sep {
+  font-weight: 600;
+  color: var(--stitch-secondary);
+  opacity: 0.65;
+}
+
+.bots-pagination__total {
+  color: var(--stitch-secondary);
+}
+
+@media (max-width: 520px) {
+  .bots-pagination__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bots-pagination__btn {
+    padding: 0 14px;
+  }
+
+  .bots-pagination__indicator {
+    min-width: 72px;
+    padding: 0 14px;
+  }
+
+  .bots-pagination__current,
+  .bots-pagination__sep,
+  .bots-pagination__total {
+    font-size: 18px;
+  }
 }

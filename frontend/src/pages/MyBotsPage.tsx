@@ -71,24 +71,49 @@ export default function MyBotsPage() {
       ) : null}
 
       {totalPages > 1 ? (
-        <div className="pagination">
-          <button
-            type="button"
-            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-            disabled={currentPage <= 1}
-          >
-            {t("myBots.pagination.prev")}
-          </button>
-          <span>
-            {t("myBots.pagination.page", { current: currentPage, total: totalPages })}
-          </span>
-          <button
-            type="button"
-            onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-            disabled={currentPage >= totalPages}
-          >
-            {t("myBots.pagination.next")}
-          </button>
+        <div className="bots-pagination-wrap">
+          <nav className="bots-pagination" aria-label={t("myBots.pagination.navAria")}>
+            <button
+              type="button"
+              className="bots-pagination__btn"
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage <= 1}
+              aria-label={t("myBots.pagination.prev")}
+            >
+              <svg className="bots-pagination__icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden>
+                <path fill="currentColor" d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+              </svg>
+              <span className="bots-pagination__label">{t("myBots.pagination.prev")}</span>
+            </button>
+
+            <div
+              className="bots-pagination__indicator"
+              aria-label={t("myBots.pagination.page", { current: currentPage, total: totalPages })}
+            >
+              <span className="bots-pagination__current" aria-hidden>
+                {currentPage}
+              </span>
+              <span className="bots-pagination__sep" aria-hidden>
+                /
+              </span>
+              <span className="bots-pagination__total" aria-hidden>
+                {totalPages}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              className="bots-pagination__btn"
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage >= totalPages}
+              aria-label={t("myBots.pagination.next")}
+            >
+              <span className="bots-pagination__label">{t("myBots.pagination.next")}</span>
+              <svg className="bots-pagination__icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden>
+                <path fill="currentColor" d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z" />
+              </svg>
+            </button>
+          </nav>
         </div>
       ) : null}
 
