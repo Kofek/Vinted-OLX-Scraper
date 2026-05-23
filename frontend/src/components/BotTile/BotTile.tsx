@@ -5,9 +5,12 @@ import "./BotTile.css";
 
 type BotTileProps = {
   bot: BotItem;
+  onEdit: (bot: BotItem) => void;
+  onToggleRuntime: (bot: BotItem) => void;
+  toggleBusy: boolean;
 };
 
-export default function BotTile({ bot }: BotTileProps) {
+export default function BotTile({ bot, onEdit, onToggleRuntime, toggleBusy }: BotTileProps) {
   const { t, i18n } = useTranslation();
   const isRunning = bot.runtime.status === "running";
 
@@ -55,10 +58,21 @@ export default function BotTile({ bot }: BotTileProps) {
           <button
             type="button"
             className={`bot-tile-main-btn bot-tile-main-btn--${isRunning ? "pause" : "resume"}`}
+            onClick={() => onToggleRuntime(bot)}
+            disabled={toggleBusy}
           >
-            {isRunning ? t("myBots.actions.pause") : t("myBots.actions.resume")}
+            {toggleBusy
+              ? t("myBots.actions.toggling")
+              : isRunning
+                ? t("myBots.actions.pause")
+                : t("myBots.actions.resume")}
           </button>
-          <button type="button" className="bot-tile-icon-btn" aria-label={t("myBots.actions.editAria")}>
+          <button
+            type="button"
+            className="bot-tile-icon-btn"
+            aria-label={t("myBots.actions.editAria")}
+            onClick={() => onEdit(bot)}
+          >
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
               <path
                 fill="currentColor"

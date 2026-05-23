@@ -1,14 +1,20 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { pauseBot, resumeBot } from "../api/bots";
 import StatCard from "../components/StatCard/StatCard";
 import BotTile from "../components/BotTile/BotTile";
 import CreateBotModal from "../components/CreateBotModal/CreateBotModal";
+import EditBotModal from "../components/EditBotModal/EditBotModal";
 import { useBotsList } from "../hooks/useBotsList";
+import type { BotItem } from "../types/bots";
 import "./MyBotsPage.css";
 
 export default function MyBotsPage() {
   const { t } = useTranslation();
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editingBot, setEditingBot] = useState<BotItem | null>(null);
+  const [togglingBotId, setTogglingBotId] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   const {
     bots,
@@ -24,6 +30,31 @@ export default function MyBotsPage() {
   const handleBotCreated = () => {
     setCurrentPage(1);
     void fetchBots({ page: 1 });
+  };
+
+  const handleBotSaved = () => {
+    void fetchBots({ page: currentPage });
+  };
+
+  const handleBotDeleted = () => {
+    void fetchBots({ page: currentPage });
+  };
+
+  const handleToggleRuntime = async (bot: BotItem) => {
+    setToggleError(null);
+    setTogglingBotId(bot.id);
+    try {
+      if (bot.runtime.status === "running") {
+        await pauseBot(bot.id);
+      } else {
+        await resumeBot(bot.id);
+      }
+      await fetchBots({ page: currentPage, silent: true });
+    } catch (err) {
+      setToggleError(err instanceof Error ? err.message : t("myBots.actions.toggleError"));
+    } finally {
+      setTogglingBotId(null);
+    }
   };
 
   return (
@@ -60,9 +91,17 @@ export default function MyBotsPage() {
         </div>
       </div>
 
+      {toggleError ? <p className="bots-toggle-error">{toggleError}</p> : null}
+
       <div className="bots-grid">
         {bots.map((bot) => (
-          <BotTile key={bot.id} bot={bot} />
+          <BotTile
+            key={bot.id}
+            bot={bot}
+            onEdit={setEditingBot}
+            onToggleRuntime={handleToggleRuntime}
+            toggleBusy={togglingBotId === bot.id}
+          />
         ))}
       </div>
 
@@ -119,6 +158,15 @@ export default function MyBotsPage() {
 
       {createModalOpen ? (
         <CreateBotModal onClose={() => setCreateModalOpen(false)} onCreated={handleBotCreated} />
+      ) : null}
+
+      {editingBot ? (
+        <EditBotModal
+          bot={editingBot}
+          onClose={() => setEditingBot(null)}
+          onSaved={handleBotSaved}
+          onDeleted={handleBotDeleted}
+        />
       ) : null}
     </section>
   );

@@ -25,7 +25,7 @@ from bot_config import validate_config
 from bot_history import load_history, save_link
 from bot_status import utc_now_iso, write_bot_status
 
-API_KEYS_POOL, MODELS_POOL, CATEGORIES = validate_config(BASE_DIR)
+API_KEYS_POOL, MODELS_POOL, ACTIVE_BOTS = validate_config(BASE_DIR)
 init_ai(API_KEYS_POOL, MODELS_POOL)
 
 OLX_AGENTS = [
@@ -75,17 +75,17 @@ def fetch_vinted_details(session, url):
 
 
 # ================= OLX LOGIC =================
-def check_olx(history, category):
-    cat_name = category.get("name", "Unknown")
-    webhook_url = category.get("webhook")
-    history_file = category.get("history_file")
-    ai_prompt = category.get("system_instruction", "")
+def check_olx(history, bot):
+    bot_name = bot.get("name", "Unknown")
+    webhook_url = bot.get("webhook_url")
+    history_file = bot.get("history_file")
+    ai_prompt = bot.get("prompt_text", "")
 
-    logger.info(f"🔵 [OLX - {cat_name}] Scanning...")
+    logger.info(f"🔵 [OLX - {bot_name}] Scanning...")
     session = req_olx.Session()
     session.headers.update({"User-Agent": random.choice(OLX_AGENTS)})
 
-    for url in category.get("urls_olx", []):
+    for url in bot.get("urls_olx", []):
         try:
             resp = session.get(url, timeout=10)
             if resp.status_code != 200: continue
@@ -117,7 +117,7 @@ def check_olx(history, category):
 
                     history.add(link)
                     save_link(link, history_file)
-                    logger.info(f"OLX [NEW in {cat_name}]: {price} | {title[:30]}")
+                    logger.info(f"OLX [NEW in {bot_name}]: {price} | {title[:30]}")
 
                     if not is_first_run:
                         full_desc = fetch_olx_details(session, link)
@@ -134,17 +134,17 @@ def check_olx(history, category):
                                 "color": 5763719,
                                 "description": f"**Cena:** `{price}`\n**Lokalizacja:** {date_loc}\n\n🤖 **Gemini:**\n{ai_verdict}",
                                 "thumbnail": {"url": img},
-                                "footer": {"text": f"OLX Bot ({cat_name}) • {datetime.now().strftime('%H:%M')}"}
+                                "footer": {"text": f"OLX Bot ({bot_name}) • {datetime.now().strftime('%H:%M')}"}
                             }]
                         }
 
                         if webhook_url:
-                            logger.info(f"SENDING NOTIFICATION -> {cat_name}!")
+                            logger.info(f"SENDING NOTIFICATION -> {bot_name}!")
                             req_olx.post(webhook_url, json=payload)
                             time.sleep(2)
 
                 except Exception as e:
-                    logger.warning(f"OLX Item Error [{cat_name}]: {e}")
+                    logger.warning(f"OLX Item Error [{bot_name}]: {e}")
                     continue
             time.sleep(random.uniform(2, 4))
         except Exception as e:
@@ -153,13 +153,13 @@ def check_olx(history, category):
 
 
 # ================= VINTED LOGIC =================
-def check_vinted(history, category):
-    cat_name = category.get("name", "Unknown")
-    webhook_url = category.get("webhook")
-    history_file = category.get("history_file")
-    ai_prompt = category.get("system_instruction", "")
+def check_vinted(history, bot):
+    bot_name = bot.get("name", "Unknown")
+    webhook_url = bot.get("webhook_url")
+    history_file = bot.get("history_file")
+    ai_prompt = bot.get("prompt_text", "")
 
-    logger.info(f"🔴 [VINTED - {cat_name}] Scanning...")
+    logger.info(f"🔴 [VINTED - {bot_name}] Scanning...")
     browser = random.choice(["chrome124"])
     session = req_vinted.Session(impersonate=browser)
 
@@ -167,9 +167,9 @@ def check_vinted(history, category):
         session.get("https://www.vinted.pl/help/15-polityka-prywatnosci", timeout=10)
         time.sleep(random.uniform(2.5, 4.0))
     except Exception as e:
-        logger.warning(f"Vinted Warmup Error [{cat_name}]: {e}")
+        logger.warning(f"Vinted Warmup Error [{bot_name}]: {e}")
 
-    for url in category.get("urls_vinted", []):
+    for url in bot.get("urls_vinted", []):
         try:
             resp = session.get(url, timeout=10)
 
@@ -204,7 +204,7 @@ def check_vinted(history, category):
 
                     history.add(link)
                     save_link(link, history_file)
-                    logger.info(f"VINTED [NEW in {cat_name}]: {price} | {title}")
+                    logger.info(f"VINTED [NEW in {bot_name}]: {price} | {title}")
 
                     if not is_first_run:
                         full_desc = fetch_vinted_details(session, link)
@@ -221,16 +221,16 @@ def check_vinted(history, category):
                                 "color": 5763719,
                                 "description": f"**Cena:** `{price}`\n**Sprzedawca:** {owner}\n\n🤖 **Gemini:**\n{ai_verdict}",
                                 "thumbnail": {"url": img},
-                                "footer": {"text": f"Vinted Bot ({cat_name}) • {datetime.now().strftime('%H:%M:%S')}"}
+                                "footer": {"text": f"Vinted Bot ({bot_name}) • {datetime.now().strftime('%H:%M:%S')}"}
                             }]
                         }
 
                         if webhook_url:
-                            logger.info(f"SENDING NOTIFICATION -> {cat_name}!")
+                            logger.info(f"SENDING NOTIFICATION -> {bot_name}!")
                             req_olx.post(webhook_url, json=payload)
                             time.sleep(3)
                 except Exception as e:
-                    logger.warning(f"Vinted Item Error [{cat_name}]: {e}")
+                    logger.warning(f"Vinted Item Error [{bot_name}]: {e}")
                     continue
             time.sleep(random.uniform(5, 10))
         except Exception as e:
@@ -246,19 +246,19 @@ def main():
 
     while True:
         write_bot_status(running=True)
-        for cat in CATEGORIES:
-            cat_name = cat.get("name", "Unknown")
-            history_file = cat.get("history_file")
+        for bot in ACTIVE_BOTS:
+            bot_name = bot.get("name", "Unknown")
+            history_file = bot.get("history_file")
 
-            logger.info(f"📂 --- Processing Category: {cat_name} ---")
+            logger.info(f"📂 --- Processing bot: {bot_name} ---")
             history = load_history(history_file)
 
-            if cat.get("urls_olx"):
-                history = check_olx(history, cat)
+            if bot.get("urls_olx"):
+                history = check_olx(history, bot)
                 time.sleep(3)
 
-            if cat.get("urls_vinted"):
-                history = check_vinted(history, cat)
+            if bot.get("urls_vinted"):
+                history = check_vinted(history, bot)
                 time.sleep(3)
 
         if is_first_run:

@@ -1,77 +1,165 @@
-import json
 import logging
 import os
 from pathlib import Path
 
+import psycopg
+from psycopg.rows import dict_row
+
 logger = logging.getLogger(__name__)
 
-def validate_config(base_dir: Path):
-    API_KEYS_RAW = os.getenv("GEMINI_API_KEYS", "")
-    MODELS_POOL_RAW = os.getenv("MODELS_POOL", "")
+ACTIVE_BOTS_SQL = """
+SELECT id, name, source, urls_olx, urls_vinted, webhook_url, prompt_text,
+       enabled, history_file
+FROM bots
+WHERE enabled = true
+ORDER BY id
+"""
 
-    API_KEYS = [key.strip() for key in API_KEYS_RAW.split(",") if key.strip()]
-    MODELS_POOL = [model.strip() for model in MODELS_POOL_RAW.split(",") if model.strip()]
+
+def _as_str_list(value):
+    """Returns a list of non-empty URL strings from a JSONB field."""
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def load_ai_env_config():
+    """Reads Gemini API keys and model list from environment variables."""
+    api_keys = [k.strip() for k in os.getenv("GEMINI_API_KEYS", "").split(",") if k.strip()]
+    models = [m.strip() for m in os.getenv("MODELS_POOL", "").split(",") if m.strip()]
 
     errors = []
-    if not API_KEYS: errors.append("❌ Missing GEMINI_API_KEYS in .env")
-    if not MODELS_POOL: errors.append("❌ Missing MODELS_POOL in .env")
+    if not api_keys:
+        errors.append("Missing GEMINI_API_KEYS in .env")
+    if not models:
+        errors.append("Missing MODELS_POOL in .env")
+    if errors:
+        _fail_config("\n".join(errors))
 
-    categories = []
-    config_path = base_dir / "config.json"
+    return api_keys, models
+
+
+def _validate_bot_row(base_dir, row):
+    """
+    Checks one bots table row and returns it ready for bot.py.
+    Only change vs DB: full history path on disk and cleaned URL lists.
+    Returns (bot, errors). bot is None when validation fails.
+    """
+    bot_id = str(row.get("id", "")).strip()
+    name = (row.get("name") or "Unnamed").strip()
+    errors = []
+
+    if not bot_id:
+        return None, ["Bot row without id"]
+
+    webhook_url = (row.get("webhook_url") or "").strip()
+    if not webhook_url:
+        errors.append(f"[{bot_id} {name}] missing webhook_url")
+
+    prompt_text = (row.get("prompt_text") or "").strip()
+    if not prompt_text:
+        errors.append(f"[{bot_id} {name}] missing prompt_text")
+
+    urls_olx = _as_str_list(row.get("urls_olx"))
+    urls_vinted = _as_str_list(row.get("urls_vinted"))
+    source = (row.get("source") or "mixed").strip().lower()
+
+    if source == "olx" and not urls_olx:
+        errors.append(f"[{bot_id} {name}] source=olx but urls_olx is empty")
+    elif source == "vinted" and not urls_vinted:
+        errors.append(f"[{bot_id} {name}] source=vinted but urls_vinted is empty")
+    elif source == "mixed" and not urls_olx and not urls_vinted:
+        errors.append(f"[{bot_id} {name}] no urls_olx or urls_vinted")
+
+    history_rel = (row.get("history_file") or "").strip()
+    if not history_rel:
+        errors.append(f"[{bot_id} {name}] missing history_file")
+
+    if errors:
+        return None, errors
+
+    history_path = (base_dir / history_rel).resolve()
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+
+    bot = dict(row)
+    bot["id"] = bot_id
+    bot["name"] = name
+    bot["source"] = source
+    bot["webhook_url"] = webhook_url
+    bot["prompt_text"] = prompt_text
+    bot["urls_olx"] = urls_olx
+    bot["urls_vinted"] = urls_vinted
+    bot["history_file"] = str(history_path)
+    return bot, []
+
+
+def load_active_bots_from_database(base_dir):
+    """Fetches enabled bots from Postgres (same column names as the bots table)."""
+    url = (os.getenv("DATABASE_URL") or "").strip()
+    if not url:
+        _fail_config("DATABASE_URL not set in .env — bot cannot load configuration from database")
+
+    errors = []
+    active_bots = []
+
     try:
-        with config_path.open("r", encoding="utf-8") as config_file:
-            config_data = json.load(config_file)
-            categories_raw = config_data.get("categories", [])
+        with psycopg.connect(url, connect_timeout=10) as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(ACTIVE_BOTS_SQL)
+                rows = cur.fetchall()
+    except Exception as exc:
+        _fail_config(f"Database connection failed: {exc}")
 
-            if not categories_raw:
-                errors.append("❌ No categories found in config.json")
+    if not rows:
+        _fail_config("No enabled bots in database (bots WHERE enabled = true).\n")
 
-            for idx, cat in enumerate(categories_raw):
-                required_fields = ["name", "history_file", "prompt_file", "webhook"]
-                for field in required_fields:
-                    if field not in cat:
-                        errors.append(
-                            f"❌ Category at index {idx} [{cat.get('name', 'Unknown')}] is missing field: '{field}'"
-                        )
+    for row in rows:
+        bot, row_errors = _validate_bot_row(base_dir, row)
+        if row_errors:
+            errors.extend(row_errors)
+            continue
+        if bot:
+            active_bots.append(bot)
 
-                # Ładowanie promptu z pliku .txt do pamięci
-                prompt_path = cat.get("prompt_file")
-                if prompt_path:
-                    prompt_path_abs = base_dir / prompt_path
-                    try:
-                        with prompt_path_abs.open("r", encoding="utf-8") as prompt_file:
-                            cat["system_instruction"] = prompt_file.read()
-                    except FileNotFoundError:
-                        errors.append(f"❌ Prompt file not found: {prompt_path}")
+    if errors:
+        _fail_config("Invalid bot rows:\n" + "\n".join(errors))
 
-                history_file_raw = cat.get("history_file")
-                if history_file_raw:
-                    cat["history_file"] = str((base_dir / history_file_raw).resolve())
+    if not active_bots:
+        _fail_config("No valid enabled bots after validation")
 
-                categories.append(cat)
+    return active_bots
 
-    except FileNotFoundError:
-        errors.append("❌ config.json file not found!")
-    except json.JSONDecodeError:
-        errors.append("❌ Syntax error in config.json! Check commas and quotes.")
 
-    if errors:  
-        errors_text = "\n".join(errors)
-        logger.critical(
-            f"Configuration failed:\n{'!' * 40}\n{errors_text}\n{'!' * 40}",
-        )
-        exit(1)
+def _fail_config(message):
+    """Logs a fatal config error and stops the process."""
+    logger.critical("Configuration failed:\n%s\n%s", "!" * 40, message)
+    raise SystemExit(1)
 
-    # --- 4. SUCCESS REPORT ---
+
+def validate_config(base_dir):
+    """
+    Main function to validate the configuration.
+    Validates .env (AI keys) and loads active bots from Postgres.
+    Returns (api_keys, models_pool, active_bots) for bot.py.
+    """
+    api_keys, models = load_ai_env_config()
+    active_bots = load_active_bots_from_database(base_dir)
+
     sep = "-" * 35
     logger.info(
-        f"\n"
-        f"{sep}\n"
-        f"✅ CONFIGURATION VALIDATED\n"
-        f"🔑 API Keys:    {len(API_KEYS)}\n"
-        f"🧠 AI Models:   {len(MODELS_POOL)}\n"
-        f"📂 Categories:  {len(categories)}\n"
-        f"{sep}"
+        "\n%s\n"
+        "CONFIGURATION VALIDATED (Postgres)\n"
+        "API Keys:    %s\n"
+        "AI Models:   %s\n"
+        "Active bots: %s\n"
+        "%s",
+        sep,
+        len(api_keys),
+        len(models),
+        len(active_bots),
+        sep,
     )
+    for bot in active_bots:
+        logger.info("  - %s (%s)", bot["name"], bot["id"])
 
-    return API_KEYS, MODELS_POOL, categories
+    return api_keys, models, active_bots

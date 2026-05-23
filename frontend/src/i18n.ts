@@ -39,6 +39,8 @@ const resources = {
         actions: {
           pause: "Pauza",
           resume: "Wznów",
+          toggling: "…",
+          toggleError: "Nie udało się zmienić statusu bota.",
           editAria: "Edytuj bota",
         },
         pagination: {
@@ -68,6 +70,18 @@ const resources = {
           submit: "Utwórz bota",
           submitting: "Tworzenie…",
           errorGeneric: "Nie udało się utworzyć bota.",
+        },
+        edit: {
+          title: "Edytuj bota",
+          closeAria: "Zamknij okno edycji bota",
+          botId: "ID",
+          submit: "Zapisz zmiany",
+          submitting: "Zapisywanie…",
+          delete: "Usuń bota",
+          deleting: "Usuwanie…",
+          deleteConfirm: "Na pewno usunąć bota „{{name}}”? Tej operacji nie cofniesz.",
+          deleteError: "Nie udało się usunąć bota.",
+          errorGeneric: "Nie udało się zapisać zmian.",
         },
       },
       stats:{
@@ -123,6 +137,8 @@ const resources = {
         actions: {
           pause: "Pause",
           resume: "Resume",
+          toggling: "…",
+          toggleError: "Could not change bot status.",
           editAria: "Edit bot",
         },
         pagination: {
@@ -152,6 +168,18 @@ const resources = {
           submit: "Create bot",
           submitting: "Creating…",
           errorGeneric: "Could not create the bot.",
+        },
+        edit: {
+          title: "Edit bot",
+          closeAria: "Close edit bot dialog",
+          botId: "ID",
+          submit: "Save changes",
+          submitting: "Saving…",
+          delete: "Delete bot",
+          deleting: "Deleting…",
+          deleteConfirm: "Delete bot “{{name}}”? This cannot be undone.",
+          deleteError: "Could not delete the bot.",
+          errorGeneric: "Could not save changes.",
         },
       },
       stats: {

@@ -157,8 +157,13 @@
     background-color 0.15s ease;
 }
 
-.bot-tile-main-btn:hover {
+.bot-tile-main-btn:hover:not(:disabled) {
   opacity: 0.92;
+}
+
+.bot-tile-main-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .bot-tile-main-btn--resume {

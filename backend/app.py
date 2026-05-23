@@ -158,6 +158,43 @@ INSERT INTO bot_runtime (bot_id, status, items_found)
 VALUES (%(bot_id)s, %(status)s, %(items_found)s)
 """
 
+UPDATE_BOT_SQL = """
+UPDATE bots SET
+    name = %(name)s,
+    source = %(source)s,
+    urls_olx = %(urls_olx)s,
+    urls_vinted = %(urls_vinted)s,
+    webhook_url = %(webhook_url)s,
+    prompt_text = %(prompt_text)s,
+    enabled = %(enabled)s,
+    updated_at_utc = %(updated_at_utc)s
+WHERE id = %(id)s
+"""
+
+DELETE_BOT_SQL = "DELETE FROM bots WHERE id = %(bot_id)s RETURNING history_file"
+
+PAUSE_BOT_SQL = """
+UPDATE bot_runtime SET
+    status = 'paused',
+    last_stopped_utc = %(now)s
+WHERE bot_id = %(bot_id)s
+"""
+
+RESUME_BOT_RUNTIME_SQL = """
+UPDATE bot_runtime SET
+    status = 'running',
+    last_started_utc = %(now)s,
+    last_heartbeat_utc = %(now)s
+WHERE bot_id = %(bot_id)s
+"""
+
+INSERT_RUNTIME_ON_RESUME_SQL = """
+INSERT INTO bot_runtime (bot_id, status, items_found, last_started_utc, last_heartbeat_utc)
+VALUES (%(bot_id)s, 'running', 0, %(now)s, %(now)s)
+"""
+
+SET_BOT_ENABLED_SQL = "UPDATE bots SET enabled = %(enabled)s, updated_at_utc = %(now)s WHERE id = %(bot_id)s"
+
 class CreateBotBody(BaseModel):
     """Shape of JSON clients send when creating a bot."""
     name: str = Field(min_length=1, max_length=255)
@@ -167,6 +204,21 @@ class CreateBotBody(BaseModel):
     webhookUrl: str = Field(min_length=1, max_length=2048)
     promptText: str = Field(min_length=1, max_length=10000)
     enabled: bool = True
+
+
+UpdateBotBody = CreateBotBody
+
+
+def validate_bot_urls(source, urls_olx, urls_vinted):
+    """Raises HTTP 400 when source and URL lists do not match."""
+    source_norm = (source or "mixed").strip().lower()
+    if source_norm == "olx" and not urls_olx:
+        raise HTTPException(status_code=400, detail="source=olx requires at least one OLX URL")
+    if source_norm == "vinted" and not urls_vinted:
+        raise HTTPException(status_code=400, detail="source=vinted requires at least one Vinted URL")
+    if source_norm == "mixed" and not urls_olx and not urls_vinted:
+        raise HTTPException(status_code=400, detail="mixed source requires at least one OLX or Vinted URL")
+
 
 def get_database_url():
     """Returns the DATABASE_URL from the env file."""
@@ -260,6 +312,7 @@ def create_bot_in_database(body):
     history_file = f"data/history/{bot_id}.txt"
     urls_olx = [u.strip() for u in body.urlsOlx if isinstance(u, str) and u.strip()]
     urls_vinted = [u.strip() for u in body.urlsVinted if isinstance(u, str) and u.strip()]
+    validate_bot_urls(body.source, urls_olx, urls_vinted)
 
     bot_row = {
         "id": bot_id,
@@ -291,6 +344,130 @@ def create_bot_in_database(body):
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")
 
     return fetch_bot_by_id(bot_id)
+
+
+def update_bot_in_database(bot_id, body):
+    """Updates an existing bot row and returns it in API shape."""
+    if not fetch_bot_by_id(bot_id):
+        raise HTTPException(status_code=404, detail="Bot not found")
+
+    urls_olx = [u.strip() for u in body.urlsOlx if isinstance(u, str) and u.strip()]
+    urls_vinted = [u.strip() for u in body.urlsVinted if isinstance(u, str) and u.strip()]
+    validate_bot_urls(body.source, urls_olx, urls_vinted)
+
+    bot_row = {
+        "id": bot_id,
+        "name": body.name.strip(),
+        "source": body.source.strip()[:32],
+        "urls_olx": Json(urls_olx),
+        "urls_vinted": Json(urls_vinted),
+        "webhook_url": body.webhookUrl,
+        "prompt_text": body.promptText,
+        "enabled": body.enabled,
+        "updated_at_utc": datetime.now(timezone.utc),
+    }
+
+    url = get_database_url()
+    try:
+        with psycopg.connect(url, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute(UPDATE_BOT_SQL, bot_row)
+                if cur.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Bot not found")
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    return fetch_bot_by_id(bot_id)
+
+
+def delete_bot_in_database(bot_id):
+    """Deletes bot (runtime removed by CASCADE). Removes history file from disk if present."""
+    url = get_database_url()
+    history_rel = None
+    try:
+        with psycopg.connect(url, connect_timeout=10) as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(DELETE_BOT_SQL, {"bot_id": bot_id})
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Bot not found")
+                history_rel = row.get("history_file")
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    if history_rel and str(history_rel).strip():
+        history_path = Path(history_rel)
+        if not history_path.is_absolute():
+            history_path = BASE_DIR / history_path
+        try:
+            if history_path.is_file():
+                history_path.unlink()
+        except OSError:
+            pass
+
+
+def _ensure_bot_exists(bot_id):
+    if not fetch_bot_by_id(bot_id):
+        raise HTTPException(status_code=404, detail="Bot not found")
+
+
+def pause_bot_in_database(bot_id):
+    """Marks bot as paused in runtime and disables it for the scraper."""
+    _ensure_bot_exists(bot_id)
+    now_utc = datetime.now(timezone.utc)
+    url = get_database_url()
+    try:
+        with psycopg.connect(url, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute(PAUSE_BOT_SQL, {"bot_id": bot_id, "now": now_utc})
+                if cur.rowcount == 0:
+                    cur.execute(
+                        INSERT_BOT_RUNTIME_SQL,
+                        {"bot_id": bot_id, "status": "paused", "items_found": 0},
+                    )
+                cur.execute(
+                    SET_BOT_ENABLED_SQL,
+                    {"bot_id": bot_id, "enabled": False, "now": now_utc},
+                )
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+    return fetch_bot_by_id(bot_id)
+
+
+def resume_bot_in_database(bot_id):
+    """Marks bot as running in runtime and enables it for the scraper."""
+    _ensure_bot_exists(bot_id)
+    now_utc = datetime.now(timezone.utc)
+    url = get_database_url()
+    try:
+        with psycopg.connect(url, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute(RESUME_BOT_RUNTIME_SQL, {"bot_id": bot_id, "now": now_utc})
+                if cur.rowcount == 0:
+                    cur.execute(
+                        INSERT_RUNTIME_ON_RESUME_SQL,
+                        {"bot_id": bot_id, "now": now_utc},
+                    )
+                cur.execute(
+                    SET_BOT_ENABLED_SQL,
+                    {"bot_id": bot_id, "enabled": True, "now": now_utc},
+                )
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+    return fetch_bot_by_id(bot_id)
+
 
 @app.get("/api/db-health")
 def db_health() -> dict[str, str | bool]:
@@ -378,6 +555,30 @@ def status() -> dict[str, str | bool | int | list[str]]:
 def create_bot(body: CreateBotBody):
     """Creates a new bot in Postgres (bots + bot_runtime) and returns it in API shape."""
     return create_bot_in_database(body)
+
+
+@app.patch("/api/bots/{bot_id}")
+def update_bot(bot_id: str, body: UpdateBotBody):
+    """Updates bot configuration in Postgres."""
+    return update_bot_in_database(bot_id.strip(), body)
+
+
+@app.delete("/api/bots/{bot_id}", status_code=204)
+def delete_bot(bot_id: str):
+    """Deletes a bot and its runtime row."""
+    delete_bot_in_database(bot_id.strip())
+
+
+@app.post("/api/bots/{bot_id}/pause")
+def pause_bot(bot_id: str):
+    """Pauses a bot (runtime status + enabled=false)."""
+    return pause_bot_in_database(bot_id.strip())
+
+
+@app.post("/api/bots/{bot_id}/resume")
+def resume_bot(bot_id: str):
+    """Resumes a bot (runtime status + enabled=true)."""
+    return resume_bot_in_database(bot_id.strip())
 
 
 @app.get("/api/bots")

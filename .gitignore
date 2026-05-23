@@ -1,4 +1,5 @@
 # IDE / Editor
+.cursor/
 .idea/
 .vscode/*
 !.vscode/extensions.json

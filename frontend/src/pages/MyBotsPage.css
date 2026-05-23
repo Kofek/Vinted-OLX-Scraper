@@ -107,6 +107,15 @@
   color: var(--text-muted);
 }
 
+.bots-toggle-error {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  background: color-mix(in srgb, #c62828 12%, transparent);
+  color: #5d1f1f;
+}
+
 .bots-grid {
   margin-top: 32px;
   display: grid;
