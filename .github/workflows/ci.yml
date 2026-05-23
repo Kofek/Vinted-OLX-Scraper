@@ -1,0 +1,62 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Pobranie repozytorium
+        uses: actions/checkout@v4
+
+      - name: Instalacja Pythona
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalacja zależności
+        run: pip install -r requirements.txt pytest
+
+      - name: Budowanie projektu
+        run: python -c "import app; print('Backend OK')"
+
+      - name: Uruchomienie testów
+        run: pytest tests/ -v
+
+      - name: Deploy
+        run: echo "Wdrażanie backendu..."
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Pobranie repozytorium
+        uses: actions/checkout@v4
+
+      - name: Instalacja Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalacja zależności
+        run: npm ci
+
+      - name: Budowanie projektu
+        run: npm run build
+
+      - name: Uruchomienie testów
+        run: npm run lint
+
+      - name: Deploy
+        run: echo "Wdrażanie frontendu..."
