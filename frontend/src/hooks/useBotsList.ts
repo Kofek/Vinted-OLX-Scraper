@@ -36,9 +36,12 @@ export function useBotsList() {
   );
 
   useEffect(() => {
-    void fetchBots();
+    const timeoutId = window.setTimeout(() => void fetchBots(), 0);
     const intervalId = window.setInterval(() => void fetchBots({ silent: true }), 10_000);
-    return () => window.clearInterval(intervalId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
   }, [fetchBots]);
 
   return {
