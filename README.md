@@ -59,3 +59,10 @@ cd backend
 python bot.py
 ```
 Jak bot powinien wyglądać po poprawnym uruchomieniu? Zaglądnij do backend/data_example
+
+## Prawa autorskie
+Copyright (c) 2026 [Kacper Kośniowski]. 
+Wszelkie prawa zastrzeżone.
+
+Ten kod źródłowy został udostępniony wyłącznie w celach demonstracyjnych (do wglądu w ramach mojego portfolio/CV). 
+Kopiowanie, modyfikowanie, dystrybucja oraz wykorzystywanie tego kodu w celach komercyjnych lub prywatnych bez mojej wyraźnej zgody jest zabronione.
