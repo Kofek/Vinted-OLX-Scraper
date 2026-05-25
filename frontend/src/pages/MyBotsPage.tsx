@@ -21,15 +21,14 @@ export default function MyBotsPage() {
     activeBots,
     totalItems,
     currentPage,
-    setCurrentPage,
     totalPages,
     fetchState,
     fetchBots,
+    goToPage,
   } = useBotsList();
 
   const handleBotCreated = () => {
-    setCurrentPage(1);
-    void fetchBots({ page: 1 });
+    goToPage(1);
   };
 
   const handleBotSaved = () => {
@@ -115,7 +114,7 @@ export default function MyBotsPage() {
             <button
               type="button"
               className="bots-pagination__btn"
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              onClick={() => goToPage(currentPage - 1)}
               disabled={currentPage <= 1}
               aria-label={t("myBots.pagination.prev")}
             >
@@ -143,7 +142,7 @@ export default function MyBotsPage() {
             <button
               type="button"
               className="bots-pagination__btn"
-              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              onClick={() => goToPage(currentPage + 1)}
               disabled={currentPage >= totalPages}
               aria-label={t("myBots.pagination.next")}
             >
