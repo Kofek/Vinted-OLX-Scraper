@@ -11,7 +11,6 @@ def load_history(file_path):
 def save_link(link, file_path):
     directory = os.path.dirname(file_path)
 
-    # Jeśli podano folder i ten folder nie istnieje, stwórz go automatycznie
     if directory and not os.path.exists(directory):
         os.makedirs(directory)
 
