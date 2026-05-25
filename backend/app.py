@@ -162,24 +162,19 @@ WHERE id = %(id)s
 
 DELETE_BOT_SQL = "DELETE FROM bots WHERE id = %(bot_id)s RETURNING history_file"
 
-PAUSE_BOT_SQL = """
-UPDATE bot_runtime SET
+PAUSE_BOT_RUNTIME_SQL = """
+INSERT INTO bot_runtime (bot_id, status, last_stopped_utc)
+VALUES (%(bot_id)s, 'paused', %(now)s)
+ON CONFLICT (bot_id) DO UPDATE SET
     status = 'paused',
     last_stopped_utc = %(now)s
-WHERE bot_id = %(bot_id)s
 """
 
 RESUME_BOT_RUNTIME_SQL = """
-UPDATE bot_runtime SET
-    status = 'running',
-    last_started_utc = %(now)s,
-    last_heartbeat_utc = %(now)s
-WHERE bot_id = %(bot_id)s
-"""
-
-INSERT_RUNTIME_ON_RESUME_SQL = """
-INSERT INTO bot_runtime (bot_id, status, items_found, last_started_utc, last_heartbeat_utc)
-VALUES (%(bot_id)s, 'running', 0, %(now)s, %(now)s)
+INSERT INTO bot_runtime (bot_id, status, items_found)
+VALUES (%(bot_id)s, 'waiting', 0)
+ON CONFLICT (bot_id) DO UPDATE SET
+    status = 'waiting'
 """
 
 SET_BOT_ENABLED_SQL = "UPDATE bots SET enabled = %(enabled)s, updated_at_utc = %(now)s WHERE id = %(bot_id)s"
@@ -407,7 +402,7 @@ def _ensure_bot_exists(bot_id):
 
 
 def pause_bot_in_database(bot_id):
-    """Disables a bot for the scraper (user intent). Runtime status is updated by bot.py."""
+    """Disables a bot and marks bot_runtime paused with a fresh last_stopped_utc."""
     _ensure_bot_exists(bot_id)
     now_utc = datetime.now(timezone.utc)
     url = get_database_url()
@@ -418,6 +413,10 @@ def pause_bot_in_database(bot_id):
                     SET_BOT_ENABLED_SQL,
                     {"bot_id": bot_id, "enabled": False, "now": now_utc},
                 )
+                cur.execute(
+                    PAUSE_BOT_RUNTIME_SQL,
+                    {"bot_id": bot_id, "now": now_utc},
+                )
             conn.commit()
     except HTTPException:
         raise
@@ -427,7 +426,7 @@ def pause_bot_in_database(bot_id):
 
 
 def resume_bot_in_database(bot_id):
-    """Enables a bot for the scraper (user intent). Runtime status is updated by bot.py."""
+    """Enables a bot and sets bot_runtime to waiting (scraper picks it up on the next cycle)."""
     _ensure_bot_exists(bot_id)
     now_utc = datetime.now(timezone.utc)
     url = get_database_url()
@@ -437,6 +436,10 @@ def resume_bot_in_database(bot_id):
                 cur.execute(
                     SET_BOT_ENABLED_SQL,
                     {"bot_id": bot_id, "enabled": True, "now": now_utc},
+                )
+                cur.execute(
+                    RESUME_BOT_RUNTIME_SQL,
+                    {"bot_id": bot_id},
                 )
             conn.commit()
     except HTTPException:

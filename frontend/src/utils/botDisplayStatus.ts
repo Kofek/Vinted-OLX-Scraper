@@ -19,3 +19,12 @@ export function getBotDisplayStatus(bot: BotItem): BotDisplayStatus {
 
   return "unknown";
 }
+
+/** Picks the timestamp shown as "last activity" on the bot tile. */
+export function getBotLastActivityUtc(bot: BotItem, displayStatus: BotDisplayStatus) {
+  if (displayStatus === "paused") {
+    return bot.runtime.lastStoppedUtc ?? bot.runtime.lastHeartbeatUtc;
+  }
+
+  return bot.runtime.lastHeartbeatUtc;
+}

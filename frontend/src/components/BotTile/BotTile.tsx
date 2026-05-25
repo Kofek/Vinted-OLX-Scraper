@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { BotItem } from "../../types/bots";
-import { getBotDisplayStatus } from "../../utils/botDisplayStatus";
+import { getBotDisplayStatus, getBotLastActivityUtc } from "../../utils/botDisplayStatus";
 import { formatLastActivityLabel } from "../../utils/time";
 import "./BotTile.css";
 
@@ -17,14 +17,11 @@ export default function BotTile({ bot, onEdit, onToggleRuntime, toggleBusy }: Bo
   const isEnabled = bot.enabled;
   const statusLabelKey = `myBots.status.${displayStatus}` as const;
 
-  const lastActivity =
-    displayStatus === "running"
-      ? formatLastActivityLabel(bot.runtime.lastHeartbeatUtc, i18n.language, t("time.justNow"))
-      : formatLastActivityLabel(
-          bot.runtime.lastStoppedUtc ?? bot.runtime.lastHeartbeatUtc,
-          i18n.language,
-          t("time.justNow"),
-        );
+  const lastActivity = formatLastActivityLabel(
+    getBotLastActivityUtc(bot, displayStatus),
+    i18n.language,
+    t("time.justNow"),
+  );
   const success =
     bot.runtime.successRate == null ? "—" : `${Number(bot.runtime.successRate).toFixed(1)}%`;
 
