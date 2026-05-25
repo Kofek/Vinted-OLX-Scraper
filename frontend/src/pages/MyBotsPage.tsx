@@ -44,7 +44,7 @@ export default function MyBotsPage() {
     setToggleError(null);
     setTogglingBotId(bot.id);
     try {
-      if (bot.runtime.status === "running") {
+      if (bot.enabled) {
         await pauseBot(bot.id);
       } else {
         await resumeBot(bot.id);

@@ -22,7 +22,6 @@ lerna-debug.log*
 # ================= BACKEND =================
 backend/.env
 backend/.venv/
-backend/config.json
 backend/data/
 backend/prompts/
 

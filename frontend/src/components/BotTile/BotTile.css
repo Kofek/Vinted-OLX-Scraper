@@ -24,8 +24,20 @@
   background: var(--stitch-primary-container);
 }
 
+.bot-tile--waiting .bot-tile-accent {
+  background: color-mix(in srgb, var(--stitch-primary-container) 55%, var(--stitch-secondary));
+}
+
 .bot-tile--paused .bot-tile-accent {
   background: var(--stitch-secondary);
+}
+
+.bot-tile--error .bot-tile-accent {
+  background: #c62828;
+}
+
+.bot-tile--unknown .bot-tile-accent {
+  background: var(--stitch-surface-container-high);
 }
 
 .bot-tile-inner {
@@ -75,6 +87,10 @@
   animation: bot-pulse 1.6s ease-in-out infinite;
 }
 
+.bot-tile--waiting .bot-tile-pill--waiting .bot-tile-dot {
+  animation: bot-pulse 2.4s ease-in-out infinite;
+}
+
 @keyframes bot-pulse {
   0%,
   100% {
@@ -92,7 +108,22 @@
   color: var(--stitch-on-primary-fixed);
 }
 
+.bot-tile-pill--waiting {
+  background: color-mix(in srgb, var(--stitch-primary-fixed) 35%, var(--stitch-surface-container-high));
+  color: var(--text-main);
+}
+
 .bot-tile-pill--paused {
+  background: var(--stitch-surface-container-high);
+  color: var(--stitch-on-surface-variant);
+}
+
+.bot-tile-pill--error {
+  background: #ffebee;
+  color: #b71c1c;
+}
+
+.bot-tile-pill--unknown {
   background: var(--stitch-surface-container-high);
   color: var(--stitch-on-surface-variant);
 }

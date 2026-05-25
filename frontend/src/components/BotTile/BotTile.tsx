@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { BotItem } from "../../types/bots";
+import { getBotDisplayStatus } from "../../utils/botDisplayStatus";
 import { formatLastActivityLabel } from "../../utils/time";
 import "./BotTile.css";
 
@@ -12,30 +13,33 @@ type BotTileProps = {
 
 export default function BotTile({ bot, onEdit, onToggleRuntime, toggleBusy }: BotTileProps) {
   const { t, i18n } = useTranslation();
-  const isRunning = bot.runtime.status === "running";
+  const displayStatus = getBotDisplayStatus(bot);
+  const isEnabled = bot.enabled;
+  const statusLabelKey = `myBots.status.${displayStatus}` as const;
 
-  const lastActivity = isRunning
-    ? formatLastActivityLabel(bot.runtime.lastHeartbeatUtc, i18n.language, t("time.justNow"))
-    : formatLastActivityLabel(
-        bot.runtime.lastStoppedUtc ?? bot.runtime.lastHeartbeatUtc,
-        i18n.language,
-        t("time.justNow"),
-      );
+  const lastActivity =
+    displayStatus === "running"
+      ? formatLastActivityLabel(bot.runtime.lastHeartbeatUtc, i18n.language, t("time.justNow"))
+      : formatLastActivityLabel(
+          bot.runtime.lastStoppedUtc ?? bot.runtime.lastHeartbeatUtc,
+          i18n.language,
+          t("time.justNow"),
+        );
   const success =
     bot.runtime.successRate == null ? "—" : `${Number(bot.runtime.successRate).toFixed(1)}%`;
 
   return (
-    <article className={`bot-tile bot-tile--${isRunning ? "running" : "paused"}`}>
+    <article className={`bot-tile bot-tile--${displayStatus}`}>
       <div className="bot-tile-accent" />
       <div className="bot-tile-inner">
         <header className="bot-tile-header">
           <h3 className="bot-tile-name">{bot.name}</h3>
           <span
-            className={`bot-tile-pill bot-tile-pill--${isRunning ? "running" : "paused"}`}
-            aria-label={isRunning ? t("myBots.status.running") : t("myBots.status.paused")}
+            className={`bot-tile-pill bot-tile-pill--${displayStatus}`}
+            aria-label={t(statusLabelKey)}
           >
             <span className="bot-tile-dot" aria-hidden />
-            {isRunning ? t("myBots.status.running") : t("myBots.status.paused")}
+            {t(statusLabelKey)}
           </span>
         </header>
 
@@ -57,13 +61,13 @@ export default function BotTile({ bot, onEdit, onToggleRuntime, toggleBusy }: Bo
         <footer className="bot-tile-actions">
           <button
             type="button"
-            className={`bot-tile-main-btn bot-tile-main-btn--${isRunning ? "pause" : "resume"}`}
+            className={`bot-tile-main-btn bot-tile-main-btn--${isEnabled ? "pause" : "resume"}`}
             onClick={() => onToggleRuntime(bot)}
             disabled={toggleBusy}
           >
             {toggleBusy
               ? t("myBots.actions.toggling")
-              : isRunning
+              : isEnabled
                 ? t("myBots.actions.pause")
                 : t("myBots.actions.resume")}
           </button>

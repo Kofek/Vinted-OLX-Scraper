@@ -13,17 +13,16 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Json
 from pydantic import BaseModel, Field
 
+from bot_status import get_scraper_running_status, get_scraper_worker_snapshot
+
 app = FastAPI(title="BotVinted API")
 BASE_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = BASE_DIR / "config.json"
-
 
 load_dotenv(BASE_DIR / ".env")
 configure_logging()
 
 CORS_ORIGINS_RAW = os.getenv("BACKEND_ALLOWED_ORIGINS", "http://localhost:5173")
 CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS_RAW.split(",") if origin.strip()]
-STATUS_PATH = BASE_DIR / "data" / "state" / "bot_status.json"
 BOT_STATUS_STALE_SECONDS = int(os.getenv("BOT_STATUS_STALE_SECONDS", "90"))
 
 app.add_middleware(
@@ -43,41 +42,31 @@ def read_json_file(path: Path, default_value):
     except Exception:
         return default_value
 
-def read_bot_running_status() -> tuple[bool, str]:
-    if not STATUS_PATH.exists():
-        return False, "status file not found"
-    try:
-        with STATUS_PATH.open("r", encoding="utf-8") as status_file:
-            data = json.load(status_file)
-        running_value = data.get("running", False)
-        return bool(running_value), "status file loaded"
-    except json.JSONDecodeError:
-        return False, "status file has invalid JSON"
-    except Exception:
-        return False, "status file read error"
+def collect_history_stats(bots):
+    """Counts history file lines for bots stored in Postgres."""
+    missing_history_files = []
+    total_history_entries = 0
+    seen_history_files = set()
 
-def apply_heartbeat_staleness(bot_running: bool, bot_status_message: str) -> tuple[bool, str]:
-    if not STATUS_PATH.exists() or not bot_running:
-        return bot_running, bot_status_message
+    for bot in bots:
+        history_file_rel = bot.get("historyFile")
+        if not history_file_rel or history_file_rel in seen_history_files:
+            continue
+        seen_history_files.add(history_file_rel)
 
-    try:
-        with STATUS_PATH.open("r", encoding="utf-8") as status_file:
-            data = json.load(status_file)
+        history_path = BASE_DIR / history_file_rel
+        if not history_path.exists():
+            missing_history_files.append(str(history_file_rel))
+            continue
 
-        heartbeat_raw = data.get("last_heartbeat_utc")
-        if not heartbeat_raw:
-            return False, "status stale: missing last_heartbeat_utc"
+        try:
+            with history_path.open("r", encoding="utf-8") as history_file:
+                total_history_entries += sum(1 for line in history_file if line.strip())
+        except Exception:
+            missing_history_files.append(str(history_file_rel))
 
-        heartbeat_dt = datetime.fromisoformat(heartbeat_raw.replace("Z", "+00:00"))
-        now_utc = datetime.now(timezone.utc)
-        age_seconds = (now_utc - heartbeat_dt).total_seconds()
+    return total_history_entries, missing_history_files
 
-        if age_seconds > BOT_STATUS_STALE_SECONDS:
-            return False, f"status stale: heartbeat older than {BOT_STATUS_STALE_SECONDS}s"
-
-        return True, "status file loaded (heartbeat fresh)"
-    except Exception:
-        return False, "status stale: invalid heartbeat timestamp"
 
 def _db_error_hint(message: str):
     """Krótkie podpowiedzi do typowych problemów z Neon / Postgres."""
@@ -329,7 +318,7 @@ def create_bot_in_database(body):
     }
     runtime_row = {
         "bot_id": bot_id,
-        "status": "paused",
+        "status": "waiting" if body.enabled else "paused",
         "items_found": 0,
     }
 
@@ -418,19 +407,13 @@ def _ensure_bot_exists(bot_id):
 
 
 def pause_bot_in_database(bot_id):
-    """Marks bot as paused in runtime and disables it for the scraper."""
+    """Disables a bot for the scraper (user intent). Runtime status is updated by bot.py."""
     _ensure_bot_exists(bot_id)
     now_utc = datetime.now(timezone.utc)
     url = get_database_url()
     try:
         with psycopg.connect(url, connect_timeout=10) as conn:
             with conn.cursor() as cur:
-                cur.execute(PAUSE_BOT_SQL, {"bot_id": bot_id, "now": now_utc})
-                if cur.rowcount == 0:
-                    cur.execute(
-                        INSERT_BOT_RUNTIME_SQL,
-                        {"bot_id": bot_id, "status": "paused", "items_found": 0},
-                    )
                 cur.execute(
                     SET_BOT_ENABLED_SQL,
                     {"bot_id": bot_id, "enabled": False, "now": now_utc},
@@ -444,19 +427,13 @@ def pause_bot_in_database(bot_id):
 
 
 def resume_bot_in_database(bot_id):
-    """Marks bot as running in runtime and enables it for the scraper."""
+    """Enables a bot for the scraper (user intent). Runtime status is updated by bot.py."""
     _ensure_bot_exists(bot_id)
     now_utc = datetime.now(timezone.utc)
     url = get_database_url()
     try:
         with psycopg.connect(url, connect_timeout=10) as conn:
             with conn.cursor() as cur:
-                cur.execute(RESUME_BOT_RUNTIME_SQL, {"bot_id": bot_id, "now": now_utc})
-                if cur.rowcount == 0:
-                    cur.execute(
-                        INSERT_RUNTIME_ON_RESUME_SQL,
-                        {"bot_id": bot_id, "now": now_utc},
-                    )
                 cur.execute(
                     SET_BOT_ENABLED_SQL,
                     {"bot_id": bot_id, "enabled": True, "now": now_utc},
@@ -504,50 +481,45 @@ def db_health() -> dict[str, str | bool]:
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
+
 @app.get("/api/status")
-def status() -> dict[str, str | bool | int | list[str]]:
-    categories: list[dict] = []
-    missing_history_files: list[str] = []
-    total_history_entries = 0
-    config_loaded = False
+def status() -> dict[str, str | bool | int | list[str] | None]:
+    """Returns scraper process status and bot/history summary from Postgres."""
+    scraper_running, scraper_status_message = get_scraper_running_status(BOT_STATUS_STALE_SECONDS)
+    worker_snapshot, _ = get_scraper_worker_snapshot()
+
+    total_bots = 0
+    enabled_bots_count = 0
+    history_entries_count = 0
+    missing_history_files = []
 
     try:
-        with CONFIG_PATH.open("r", encoding="utf-8") as config_file:
-            config_data = json.load(config_file)
-            categories = config_data.get("categories", [])
-            config_loaded = True
-    except Exception:
-        config_loaded = False
+        bots = fetch_bots_from_database()
+        total_bots = len(bots)
+        enabled_bots_count = sum(1 for bot in bots if bot.get("enabled"))
+        history_entries_count, missing_history_files = collect_history_stats(bots)
+    except HTTPException:
+        pass
 
-    bot_running, bot_status_message = read_bot_running_status()
-    bot_running, bot_status_message = apply_heartbeat_staleness(bot_running, bot_status_message)
-
-    for category in categories:
-        history_file_rel = category.get("history_file")
-        if not history_file_rel:
-            continue
-
-        history_path = BASE_DIR / history_file_rel
-        if not history_path.exists():
-            missing_history_files.append(str(history_file_rel))
-            continue
-
-        try:
-            with history_path.open("r", encoding="utf-8") as history_file:
-                lines = [line.strip() for line in history_file if line.strip()]
-                total_history_entries += len(lines)
-        except Exception:
-            missing_history_files.append(str(history_file_rel))
+    scraper_last_heartbeat = None
+    scraper_last_started = None
+    scraper_last_stopped = None
+    if worker_snapshot:
+        scraper_last_heartbeat = to_iso_string(worker_snapshot.get("last_heartbeat_utc"))
+        scraper_last_started = to_iso_string(worker_snapshot.get("last_started_utc"))
+        scraper_last_stopped = to_iso_string(worker_snapshot.get("last_stopped_utc"))
 
     return {
-        "botRunning": bot_running,
-        "botStatusMessage": bot_status_message,
+        "botRunning": scraper_running,
+        "botStatusMessage": scraper_status_message,
         "serverTimeUtc": datetime.now(timezone.utc).isoformat(),
-        "configLoaded": config_loaded,
-        "categoriesCount": len(categories),
-        "historyEntriesCount": total_history_entries,
+        "totalBots": total_bots,
+        "enabledBotsCount": enabled_bots_count,
+        "historyEntriesCount": history_entries_count,
         "missingHistoryFiles": missing_history_files,
-        "message": "Status endpoint is connected to config and history files",
+        "scraperLastHeartbeatUtc": scraper_last_heartbeat,
+        "scraperLastStartedUtc": scraper_last_started,
+        "scraperLastStoppedUtc": scraper_last_stopped,
     }
 
 
@@ -571,13 +543,13 @@ def delete_bot(bot_id: str):
 
 @app.post("/api/bots/{bot_id}/pause")
 def pause_bot(bot_id: str):
-    """Pauses a bot (runtime status + enabled=false)."""
+    """Pauses a bot (sets enabled=false; scraper updates runtime status)."""
     return pause_bot_in_database(bot_id.strip())
 
 
 @app.post("/api/bots/{bot_id}/resume")
 def resume_bot(bot_id: str):
-    """Resumes a bot (runtime status + enabled=true)."""
+    """Resumes a bot (sets enabled=true; scraper updates runtime status)."""
     return resume_bot_in_database(bot_id.strip())
 
 
@@ -588,9 +560,9 @@ def list_bots(page: int = Query(default=1, ge=1), pageSize: int = Query(default=
     active_bots_count = 0
     total_items_found = 0
     for bot in merged_bots_data:
-        runtime = bot.get("runtime") or {}
-        if runtime.get("status") == "running":
+        if bot.get("enabled"):
             active_bots_count += 1
+        runtime = bot.get("runtime") or {}
         total_items_found += int(runtime.get("itemsFound") or 0)
     total_bots = len(merged_bots_data)
     total_pages = (total_bots + pageSize - 1) // pageSize if total_bots > 0 else 1

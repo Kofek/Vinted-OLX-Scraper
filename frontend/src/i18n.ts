@@ -34,7 +34,10 @@ const resources = {
         },
         status: {
           running: "Aktywny",
+          waiting: "Oczekujący",
           paused: "Wstrzymany",
+          error: "Błąd",
+          unknown: "Nieznany",
         },
         actions: {
           pause: "Pauza",
@@ -132,7 +135,10 @@ const resources = {
         },
         status: {
           running: "Running",
+          waiting: "Waiting",
           paused: "Paused",
+          error: "Error",
+          unknown: "Unknown",
         },
         actions: {
           pause: "Pause",
