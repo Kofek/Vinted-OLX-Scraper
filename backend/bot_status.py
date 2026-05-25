@@ -45,7 +45,6 @@ def _save_status_data(payload):
                 pass
 
 
-
 def write_bot_status(running: bool,last_started_utc=_UNSET,last_stopped_utc=_UNSET,):
     """Writes global scraper process status. Use _UNSET to keep an existing timestamp."""
     current_data = _load_status_data()
@@ -115,9 +114,11 @@ def mark_scraper_started():
     """Marks bot.py as running and clears the previous stop time."""
     write_bot_status(running=True, last_started_utc=utc_now_iso(), last_stopped_utc=None)
 
+
 def mark_scraper_stopped():
     """Marks bot.py as stopped."""
     write_bot_status(running=False, last_stopped_utc=utc_now_iso())
+
 
 def mark_scraper_heartbeat():
     """Refreshes heartbeat while keeping start/stop timestamps unchanged."""
