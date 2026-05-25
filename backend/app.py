@@ -42,6 +42,23 @@ def read_json_file(path: Path, default_value):
     except Exception:
         return default_value
 
+def count_history_file_entries(history_file_rel):
+    """Returns non-empty lines in a bot history file (one listing link per line)."""
+    history_rel = (history_file_rel or "").strip()
+    if not history_rel:
+        return 0
+
+    history_path = BASE_DIR / history_rel
+    if not history_path.exists():
+        return 0
+
+    try:
+        with history_path.open("r", encoding="utf-8") as history_file:
+            return sum(1 for line in history_file if line.strip())
+    except Exception:
+        return 0
+
+
 def collect_history_stats(bots):
     """Counts history file lines for bots stored in Postgres."""
     missing_history_files = []
@@ -59,11 +76,7 @@ def collect_history_stats(bots):
             missing_history_files.append(str(history_file_rel))
             continue
 
-        try:
-            with history_path.open("r", encoding="utf-8") as history_file:
-                total_history_entries += sum(1 for line in history_file if line.strip())
-        except Exception:
-            missing_history_files.append(str(history_file_rel))
+        total_history_entries += count_history_file_entries(history_file_rel)
 
     return total_history_entries, missing_history_files
 
@@ -256,7 +269,7 @@ def serialize_bot_list_item(row):
             "lastHeartbeatUtc": to_iso_string(row.get("last_heartbeat_utc")),
             "lastStartedUtc": to_iso_string(row.get("last_started_utc")),
             "lastStoppedUtc": to_iso_string(row.get("last_stopped_utc")),
-            "itemsFound": int(row.get("items_found") or 0),
+            "itemsFound": count_history_file_entries(row.get("history_file")),
             "successRate": success_rate,
             "lastError": row.get("last_error"),
         },
