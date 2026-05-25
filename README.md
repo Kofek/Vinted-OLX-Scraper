@@ -1,5 +1,8 @@
 ![CI Pipeline](https://github.com/Kofek/Vinted-OLX-Scraper/actions/workflows/ci.yml/badge.svg)
 
+![Podgląd strony MagicScraper](docs/my-bots.png)
+
+
 Projekt automatyzuje proces monitorowania popularnych serwisow ogloszeniowych. Bot w czasie rzeczywistym analizuje ceny rynkowe i powiadamia o ofertach ponizej sredniej wartosci.
 Bot jest gotowy do uruchomienia i dziala. Strona webowa jest nadal w procesie tworzenia.
 
