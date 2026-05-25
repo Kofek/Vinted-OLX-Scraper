@@ -23,22 +23,6 @@ def _as_str_list(value):
     return [str(item).strip() for item in value if str(item).strip()]
 
 
-def load_ai_env_config():
-    """Reads Gemini API keys and model list from environment variables."""
-    api_keys = [k.strip() for k in os.getenv("GEMINI_API_KEYS", "").split(",") if k.strip()]
-    models = [m.strip() for m in os.getenv("MODELS_POOL", "").split(",") if m.strip()]
-
-    errors = []
-    if not api_keys:
-        errors.append("Missing GEMINI_API_KEYS in .env")
-    if not models:
-        errors.append("Missing MODELS_POOL in .env")
-    if errors:
-        _fail_config("\n".join(errors))
-
-    return api_keys, models
-
-
 def _validate_bot_row(base_dir, row):
     """
     Checks one bots table row and returns it ready for bot.py.
@@ -93,7 +77,7 @@ def _validate_bot_row(base_dir, row):
     return bot, []
 
 
-def load_active_bots_from_database(base_dir):
+def load_active_bots_from_database(base_dir, allow_empty=False):
     """Fetches enabled bots from Postgres (same column names as the bots table)."""
     url = (os.getenv("DATABASE_URL") or "").strip()
     if not url:
@@ -111,6 +95,8 @@ def load_active_bots_from_database(base_dir):
         _fail_config(f"Database connection failed: {exc}")
 
     if not rows:
+        if allow_empty:
+            return []
         _fail_config("No enabled bots in database (bots WHERE enabled = true).\n")
 
     for row in rows:
@@ -124,7 +110,7 @@ def load_active_bots_from_database(base_dir):
     if errors:
         _fail_config("Invalid bot rows:\n" + "\n".join(errors))
 
-    if not active_bots:
+    if not active_bots and not allow_empty:
         _fail_config("No valid enabled bots after validation")
 
     return active_bots
@@ -136,30 +122,50 @@ def _fail_config(message):
     raise SystemExit(1)
 
 
-def validate_config(base_dir):
+def load_ai_env_config():
+    """Reads Gemini API keys and model list from environment variables."""
+    api_keys = [k.strip() for k in os.getenv("GEMINI_API_KEYS", "").split(",") if k.strip()]
+    models = [m.strip() for m in os.getenv("MODELS_POOL", "").split(",") if m.strip()]
+
+    errors = []
+    if not api_keys:
+        errors.append("Missing GEMINI_API_KEYS in .env")
+    if not models:
+        errors.append("Missing MODELS_POOL in .env")
+    if errors:
+        _fail_config("\n".join(errors))
+
+    return api_keys, models
+
+
+def validate_scraper_startup(base_dir):
     """
-    Main function to validate the configuration.
-    Validates .env (AI keys) and loads active bots from Postgres.
-    Returns (api_keys, models_pool, active_bots) for bot.py.
+    Validates .env (AI keys) and database connectivity for bot.py.
+    Does not require enabled bots — the main loop reloads them each cycle.
     """
     api_keys, models = load_ai_env_config()
-    active_bots = load_active_bots_from_database(base_dir)
+    url = (os.getenv("DATABASE_URL") or "").strip()
+    if not url:
+        _fail_config("DATABASE_URL not set in .env — bot cannot load configuration from database")
+
+    try:
+        with psycopg.connect(url, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+    except Exception as exc:
+        _fail_config(f"Database connection failed: {exc}")
 
     sep = "-" * 35
     logger.info(
         "\n%s\n"
-        "CONFIGURATION VALIDATED (Postgres)\n"
+        "SCRAPER STARTUP OK (Postgres)\n"
         "API Keys:    %s\n"
         "AI Models:   %s\n"
-        "Active bots: %s\n"
         "%s",
         sep,
         len(api_keys),
         len(models),
-        len(active_bots),
         sep,
     )
-    for bot in active_bots:
-        logger.info("  - %s (%s)", bot["name"], bot["id"])
+    return api_keys, models
 
-    return api_keys, models, active_bots
