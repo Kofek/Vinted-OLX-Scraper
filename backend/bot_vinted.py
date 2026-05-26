@@ -9,7 +9,7 @@ from curl_cffi import requests as req_vinted
 
 from bot_ai import analyze_ai
 from bot_history import save_link
-from bot_state import is_first_run
+import bot_state
 
 logger = logging.getLogger("bot")
 
@@ -84,7 +84,7 @@ def check_vinted(history, bot):
                     save_link(link, history_file)
                     logger.info(f"VINTED [NEW in {bot_name}]: {price} | {title}")
 
-                    if not is_first_run:
+                    if not bot_state.is_first_run:
                         full_desc = fetch_vinted_details(session, link)
                         ai_verdict = analyze_ai(title, price, full_desc, img, ai_prompt)
                         ai_verdict_upper = ai_verdict.upper()

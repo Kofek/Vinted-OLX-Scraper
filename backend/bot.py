@@ -9,7 +9,7 @@ from bot_ai import init_ai
 from bot_config import load_active_bots_from_database, validate_scraper_startup
 from bot_scan import scan_bot
 from bot_runtime import sync_runtime_with_enabled_flags
-from bot_state import finish_initial_scan, is_first_run
+import bot_state
 from bot_status import mark_scraper_heartbeat, mark_scraper_started, mark_scraper_stopped
 from logging_config import configure_logging
 
@@ -39,9 +39,9 @@ def main():
         for bot in active_bots:
             scan_bot(bot)
 
-        if is_first_run:
+        if bot_state.is_first_run:
             logger.info("\n✅ Initial databases loaded. Waiting for new items.")
-            finish_initial_scan()
+            bot_state.finish_initial_scan()
 
         wait_time = random.uniform(30, 60)
         logger.info(f"\n💤 Waiting {int(wait_time)}s...\n")

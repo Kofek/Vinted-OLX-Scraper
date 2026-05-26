@@ -13,8 +13,10 @@ const resources = {
         settings: "Ustawienia",
       },
       page: {
-        dashboardTitle: "Dashboard",
-        dashboardDesc: "To jest placeholder strony Dashboard.",
+        dashboardEyebrow: "Przegląd",
+        dashboardTitle: "Panel główny",
+        dashboardDesc:
+          "MagicScraper pozwala tworzyć boty monitorujące ogłoszenia na OLX i Vinted. Ustaw linki wyszukiwania, webhook z alertami oraz włączaj, edytuj i wstrzymuj boty w jednym panelu.",
         myBotsTitle: "Moje Boty",
         eyebrow: "Panel Kontrolny",
         myBotsDesc: "Monitoruj swoje boty i zarządzaj nimi.",
@@ -115,8 +117,10 @@ const resources = {
         settings: "Settings",
       },
       page: {
+        dashboardEyebrow: "Overview",
         dashboardTitle: "Dashboard",
-        dashboardDesc: "This is a Dashboard placeholder page.",
+        dashboardDesc:
+          "MagicScraper lets you create bots that monitor listings on OLX and Vinted. Set search links, webhook alerts, and manage your bots in one place — create, edit, pause, and resume.",
         myBotsTitle: "My Bots",
         eyebrow: "Dashboard",
         myBotsDesc: "Monitor your bots and manage them.",
