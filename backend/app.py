@@ -118,7 +118,7 @@ SELECT
     r.last_error
 FROM bots b
 LEFT JOIN bot_runtime r ON r.bot_id = b.id
-ORDER BY b.id
+ORDER BY b.created_at_utc DESC, b.id
 """
 
 BOT_BY_ID_SQL = """
