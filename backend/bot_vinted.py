@@ -13,6 +13,90 @@ import bot_state
 
 logger = logging.getLogger("bot")
 
+VINTED_BROWSERS = [
+    "chrome120",
+    "chrome124",
+    "chrome131",
+    "chrome136",
+    "safari17_0",
+]
+
+VINTED_WARMUP_URLS = [
+    "https://www.vinted.pl/help/15-polityka-prywatnosci",
+    "https://www.vinted.pl/help",
+]
+
+VINTED_403_PAUSE_SECONDS = (180, 240)
+VINTED_PROFILE_RETRY_DELAY_SECONDS = (4, 8)
+VINTED_MAX_PROFILE_RETRIES = 3
+
+
+def warmup_vinted_session(session, bot_name):
+    """Visits static Vinted pages to collect cookies before catalog requests."""
+    for warmup_url in VINTED_WARMUP_URLS:
+        try:
+            session.get(warmup_url, timeout=10)
+            time.sleep(random.uniform(1.5, 2.5))
+        except Exception as exc:
+            logger.warning(f"Vinted Warmup Error [{bot_name}] ({warmup_url}): {exc}")
+
+
+def open_vinted_session(browser, bot_name):
+    session = req_vinted.Session(impersonate=browser)
+    warmup_vinted_session(session, bot_name)
+    return session
+
+
+def pause_after_vinted_block(last_browser):
+    pause_seconds = random.uniform(*VINTED_403_PAUSE_SECONDS)
+    logger.warning(
+        f"Vinted 403 ERROR ({last_browser})! All profiles blocked, pausing {int(pause_seconds)}s."
+    )
+    time.sleep(pause_seconds)
+
+
+def fetch_vinted_catalog(url, bot_name):
+    """
+    Tries several browser profiles for one catalog URL.
+    Returns (session, browser, response) on success, or None when all profiles get 403.
+    """
+    browsers = VINTED_BROWSERS[:]
+    random.shuffle(browsers)
+    last_browser = browsers[0]
+
+    for attempt, browser in enumerate(browsers[:VINTED_MAX_PROFILE_RETRIES], start=1):
+        last_browser = browser
+        session = open_vinted_session(browser, bot_name)
+
+        try:
+            resp = session.get(url, timeout=10)
+        except Exception as exc:
+            logger.warning(f"Vinted Request Error [{bot_name}] ({browser}): {exc}")
+            session.close()
+            continue
+
+        if resp.status_code == 200:
+            if attempt > 1:
+                logger.info(f"Vinted OK with {browser} after {attempt} profile attempt(s).")
+            return session, browser, resp
+
+        if resp.status_code == 403:
+            logger.warning(
+                f"Vinted 403 ({browser}) [{bot_name}] attempt {attempt}/{VINTED_MAX_PROFILE_RETRIES}, "
+                "trying another profile..."
+            )
+            session.close()
+            if attempt < VINTED_MAX_PROFILE_RETRIES:
+                time.sleep(random.uniform(*VINTED_PROFILE_RETRY_DELAY_SECONDS))
+            continue
+
+        logger.warning(f"Vinted HTTP {resp.status_code} ({browser}) [{bot_name}] on catalog URL.")
+        session.close()
+        return None
+
+    pause_after_vinted_block(last_browser)
+    return None
+
 
 def fetch_vinted_details(session, url):
     try:
@@ -32,7 +116,7 @@ def check_vinted(history, bot):
     ai_prompt = bot.get("prompt_text", "")
 
     logger.info(f"🔴 [VINTED - {bot_name}] Scanning...")
-    browser = random.choice(["chrome124"])
+    browser = random.choice(VINTED_BROWSERS)
     session = req_vinted.Session(impersonate=browser)
 
     try:
@@ -42,17 +126,13 @@ def check_vinted(history, bot):
         logger.warning(f"Vinted Warmup Error [{bot_name}]: {e}")
 
     for url in bot.get("urls_vinted", []):
+        session = None
         try:
-            resp = session.get(url, timeout=10)
-
-            if resp.status_code == 403:
-                logger.warning(f"Vinted 403 ERROR ({browser})! Session killed, pausing 2 mins.")
-                session.close()
-                time.sleep(120)
+            catalog_result = fetch_vinted_catalog(url, bot_name)
+            if not catalog_result:
                 return history
 
-            if resp.status_code != 200:
-                continue
+            session, browser, resp = catalog_result
 
             soup = BeautifulSoup(resp.text, "html.parser")
             items = soup.find_all("div", {"data-testid": "grid-item"})
@@ -127,4 +207,7 @@ def check_vinted(history, bot):
             time.sleep(random.uniform(5, 10))
         except Exception as e:
             logger.warning(f"Vinted Error: {e}")
+        finally:
+            if session is not None:
+                session.close()
     return history
