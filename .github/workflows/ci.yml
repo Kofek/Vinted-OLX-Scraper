@@ -14,7 +14,7 @@ jobs:
         working-directory: backend
 
     steps:
-      - name: Repository Download
+      - name: Repository  Download
         uses: actions/checkout@v4
 
       - name: Instalacja Pythona
