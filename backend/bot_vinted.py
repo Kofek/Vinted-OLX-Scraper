@@ -1,7 +1,6 @@
 import logging
 import random
 import time
-from datetime import datetime
 
 import requests as req_http
 from bs4 import BeautifulSoup
@@ -9,6 +8,7 @@ from curl_cffi import requests as req_vinted
 
 from bot_ai import analyze_ai
 from bot_history import save_link
+from bot_notify import build_notification_payload, is_worth_buying
 import bot_state
 
 logger = logging.getLogger("bot")
@@ -192,35 +192,20 @@ def check_vinted(history, bot):
                     if not bot_state.is_first_run:
                         full_desc = fetch_vinted_details(session, link)
                         ai_verdict = analyze_ai(title, price, full_desc, img, ai_prompt)
-                        ai_verdict_upper = ai_verdict.upper()
 
-                        if (
-                            "NIE WARTO" in ai_verdict_upper
-                            or "RYZYKO" in ai_verdict_upper
-                            or "WARTO" not in ai_verdict_upper
-                        ):
+                        if not is_worth_buying(ai_verdict):
                             continue
 
-                        payload = {
-                            "embeds": [
-                                {
-                                    "title": f"💎 {title}",
-                                    "url": link,
-                                    "color": 5763719,
-                                    "description": (
-                                        f"**Cena:** `{price}`\n**Sprzedawca:** {owner}\n\n"
-                                        f"🤖 **Gemini:**\n{ai_verdict}"
-                                    ),
-                                    "thumbnail": {"url": img},
-                                    "footer": {
-                                        "text": (
-                                            f"Vinted Bot ({bot_name}) • "
-                                            f"{datetime.now().strftime('%H:%M:%S')}"
-                                        )
-                                    },
-                                }
-                            ]
-                        }
+                        payload = build_notification_payload(
+                            title,
+                            link,
+                            price,
+                            f"**Sprzedawca:** {owner}",
+                            img,
+                            ai_verdict,
+                            bot_name,
+                            "Vinted",
+                        )
 
                         if webhook_url:
                             logger.info(f"SENDING NOTIFICATION -> {bot_name}!")

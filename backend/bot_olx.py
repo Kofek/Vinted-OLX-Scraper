@@ -1,19 +1,24 @@
 import logging
 import random
 import time
-from datetime import datetime
-
 import requests
 from bs4 import BeautifulSoup
 
 from bot_ai import analyze_ai
 from bot_history import save_link
+from bot_notify import build_notification_payload, is_worth_buying
 import bot_state
 
-OLX_MAX_LISTINGS_PER_PAGE = 15
-
-
 logger = logging.getLogger("bot")
+
+OLX_MAX_LISTINGS_PER_PAGE = 15
+OLX_REQUEST_TIMEOUT_SECONDS = 10
+OLX_DELAY_BETWEEN_URLS_SECONDS = (2, 4)
+OLX_DETAILS_TIMEOUT_SECONDS = 5
+OLX_DELAY_BEFORE_DETAILS_SECONDS = (0.5, 1.0)
+DISCORD_DELAY_AFTER_POST_SECONDS = 2
+FRESH_LISTING_KEYWORDS = ["dzisiaj", "minut", "godz", "sekund", "teraz", "chwil"]
+
 
 OLX_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -31,19 +36,25 @@ def is_fresh_listing(date_text):
     if not date_text:
         return False
     date_text = date_text.lower()
-    fresh_words = ["dzisiaj", "minut", "godz", "sekund", "teraz", "chwil"]
-    return any(word in date_text for word in fresh_words)
+    return any(word in date_text for word in FRESH_LISTING_KEYWORDS)
 
 
 def fetch_olx_details(session, url):
     """Returns the full description from a single OLX listing page."""
     try:
-        time.sleep(random.uniform(0.5, 1.0))
-        resp = session.get(url, timeout=5)
+        time.sleep(random.uniform(*OLX_DELAY_BEFORE_DETAILS_SECONDS))
+        resp = session.get(url, timeout=OLX_DETAILS_TIMEOUT_SECONDS)
+
+        if resp.status_code != 200:
+            logger.warning(f"OLX details HTTP {resp.status_code} on {url}")
+            return "No description (Error)"
+
         soup = BeautifulSoup(resp.text, "html.parser")
         desc_div = soup.find("div", {"data-cy": "ad_description"})
         return desc_div.text.strip() if desc_div else "No description"
-    except Exception:
+
+    except Exception as exc:
+        logger.warning(f"OLX details request error on {url}: {exc}")
         return "No description (Error)"
 
 
@@ -60,7 +71,7 @@ def extract_olx_listing_link(listing):
         return None
 
     href = a_tag["href"].strip()
-    
+
     if not href or "/d/oferta/" not in href:
         return None
 
@@ -74,7 +85,7 @@ def extract_olx_date_location(listing):
     date_tag = listing.find("p", {"data-testid": "location-date"})
     return date_tag.text.strip() if date_tag else "No data"
 
-    
+
 def should_skip_old_listing(date_loc):
     """Returns True for stale listings, but keeps everything during the first run."""
     if bot_state.is_first_run:
@@ -100,35 +111,6 @@ def extract_olx_image(listing):
     return img_tag.get("src") if img_tag else ""
 
 
-def is_worth_buying(ai_verdict):
-    """Returns True when the AI verdict recommends the deal."""
-    verdict = ai_verdict.upper()
-    if "NIE WARTO" in verdict or "RYZYKO" in verdict:
-        return False
-    return "WARTO" in verdict
-
-
-def build_olx_discord_payload(title, link, price, date_loc, img, ai_verdict, bot_name):
-    """Builds the Discord embed for a matched OLX listing."""
-    return {
-        "embeds": [
-            {
-                "title": f"💎 {title}",
-                "url": link,
-                "color": 5763719,
-                "description": (
-                    f"**Cena:** `{price}`\n**Lokalizacja:** {date_loc}\n\n"
-                    f"🤖 **Gemini:**\n{ai_verdict}"
-                ),
-                "thumbnail": {"url": img},
-                "footer": {
-                    "text": f"OLX Bot ({bot_name}) • {datetime.now().strftime('%H:%M')}"
-                },
-            }
-        ]
-    }
-
-
 def check_olx(history, bot):
     """Scans all OLX URLs of one bot and notifies Discord about new deals."""
     bot_name = bot.get("name", "Unknown")
@@ -142,12 +124,12 @@ def check_olx(history, bot):
 
     for url in bot.get("urls_olx", []):
         try:
-            resp = olx_http_session.get(url, timeout=10)
+            resp = olx_http_session.get(url, timeout=OLX_REQUEST_TIMEOUT_SECONDS)
             if resp.status_code != 200:
                 logger.warning(f"OLX HTTP {resp.status_code} [{bot_name}] on {url}")
                 continue
-            
-            listings  = parse_olx_listings(resp.text)
+
+            listings = parse_olx_listings(resp.text)
 
             for listing in listings[:OLX_MAX_LISTINGS_PER_PAGE]:
                 try:
@@ -156,15 +138,17 @@ def check_olx(history, bot):
                         continue
 
                     date_loc = extract_olx_date_location(listing)
-                    
+
                     if should_skip_old_listing(date_loc):
                         continue
 
+                    # first run extract currently ussless data, it will be used in the future updates
                     title = extract_olx_title(listing)
                     price = extract_olx_price(listing)
                     img = extract_olx_image(listing)
 
-                    history.add(link) # history is a set object, we use this object to avoid re-reading the history file on every listing
+                    # history is a set object, we use this object to avoid re-reading the history file on every listing
+                    history.add(link)
                     save_link(link, history_file)
                     logger.info(f"OLX [NEW in {bot_name}]: {price} | {title[:30]}")
 
@@ -176,15 +160,24 @@ def check_olx(history, bot):
                             continue
 
                         if webhook_url:
-                            payload = build_olx_discord_payload(title, link, price, date_loc, img, ai_verdict, bot_name)
+                            payload = build_notification_payload(
+                                title,
+                                link,
+                                price,
+                                f"**Lokalizacja:** {date_loc}",
+                                img,
+                                ai_verdict,
+                                bot_name,
+                                "OLX",
+                            )
                             logger.info(f"SENDING NOTIFICATION -> {bot_name}!")
                             requests.post(webhook_url, json=payload)
-                            time.sleep(2)
+                            time.sleep(DISCORD_DELAY_AFTER_POST_SECONDS)
 
                 except Exception as e:
                     logger.warning(f"OLX Item Error [{bot_name}]: {e}")
                     continue
-            time.sleep(random.uniform(2, 4))
+            time.sleep(random.uniform(*OLX_DELAY_BETWEEN_URLS_SECONDS))
         except Exception as e:
             logger.warning(f"OLX URL Error: {e}")
     return history
