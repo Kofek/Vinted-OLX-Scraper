@@ -26,9 +26,14 @@ VINTED_WARMUP_URLS = [
     "https://www.vinted.pl/help",
 ]
 
-VINTED_403_PAUSE_SECONDS = (180, 240)
+VINTED_403_PAUSE_SECONDS = (240, 360)
 VINTED_PROFILE_RETRY_DELAY_SECONDS = (4, 8)
 VINTED_MAX_PROFILE_RETRIES = 3
+
+# Tracks consecutive "all profiles blocked by 403" events per bot.
+VINTED_CONSECUTIVE_403_BLOCKS = {}
+VINTED_403_SERIES_THRESHOLD = 2
+VINTED_403_SERIES_PAUSE_SECONDS = 3600
 
 
 def warmup_vinted_session(session, bot_name):
@@ -47,11 +52,24 @@ def open_vinted_session(browser, bot_name):
     return session
 
 
-def pause_after_vinted_block(last_browser):
-    pause_seconds = random.uniform(*VINTED_403_PAUSE_SECONDS)
-    logger.warning(
-        f"Vinted 403 ERROR ({last_browser})! All profiles blocked, pausing {int(pause_seconds)}s."
-    )
+def pause_after_vinted_block(last_browser, bot_name):
+    consecutive_blocks = VINTED_CONSECUTIVE_403_BLOCKS.get(bot_name, 0)
+
+    if consecutive_blocks >= VINTED_403_SERIES_THRESHOLD:
+        pause_seconds = VINTED_403_SERIES_PAUSE_SECONDS
+        logger.warning(
+            f"Vinted 403 ERROR ({last_browser})! Repeated 403 blocks for [{bot_name}] "
+            f"(series {consecutive_blocks}), pausing {int(pause_seconds)}s."
+        )
+        # Reset after the long cooldown so the bot can try again.
+        VINTED_CONSECUTIVE_403_BLOCKS[bot_name] = 0
+    else:
+        pause_seconds = random.uniform(*VINTED_403_PAUSE_SECONDS)
+        logger.warning(
+            f"Vinted 403 ERROR ({last_browser})! All profiles blocked for [{bot_name}], "
+            f"pausing {int(pause_seconds)}s (series {consecutive_blocks}/{VINTED_403_SERIES_THRESHOLD})."
+        )
+
     time.sleep(pause_seconds)
 
 
@@ -63,6 +81,8 @@ def fetch_vinted_catalog(url, bot_name):
     browsers = VINTED_BROWSERS[:]
     random.shuffle(browsers)
     last_browser = browsers[0]
+
+    saw_403 = False
 
     for attempt, browser in enumerate(browsers[:VINTED_MAX_PROFILE_RETRIES], start=1):
         last_browser = browser
@@ -78,9 +98,11 @@ def fetch_vinted_catalog(url, bot_name):
         if resp.status_code == 200:
             if attempt > 1:
                 logger.info(f"Vinted OK with {browser} after {attempt} profile attempt(s).")
+            VINTED_CONSECUTIVE_403_BLOCKS[bot_name] = 0
             return session, browser, resp
 
         if resp.status_code == 403:
+            saw_403 = True
             logger.warning(
                 f"Vinted 403 ({browser}) [{bot_name}] attempt {attempt}/{VINTED_MAX_PROFILE_RETRIES}, "
                 "trying another profile..."
@@ -91,10 +113,13 @@ def fetch_vinted_catalog(url, bot_name):
             continue
 
         logger.warning(f"Vinted HTTP {resp.status_code} ({browser}) [{bot_name}] on catalog URL.")
+        VINTED_CONSECUTIVE_403_BLOCKS[bot_name] = 0
         session.close()
         return None
 
-    pause_after_vinted_block(last_browser)
+    if saw_403:
+        VINTED_CONSECUTIVE_403_BLOCKS[bot_name] = VINTED_CONSECUTIVE_403_BLOCKS.get(bot_name, 0) + 1
+        pause_after_vinted_block(last_browser, bot_name)
     return None
 
 

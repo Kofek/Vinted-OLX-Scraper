@@ -43,7 +43,7 @@ def main():
             logger.info("\n✅ Initial databases loaded. Waiting for new items.")
             bot_state.finish_initial_scan()
 
-        wait_time = random.uniform(30, 60)
+        wait_time = random.uniform(120, 180)
         logger.info(f"\n💤 Waiting {int(wait_time)}s...\n")
         time.sleep(wait_time)
 
