@@ -3,12 +3,15 @@ import random
 import time
 from datetime import datetime
 
-import requests as req_olx
+import requests
 from bs4 import BeautifulSoup
 
 from bot_ai import analyze_ai
 from bot_history import save_link
 import bot_state
+
+OLX_MAX_LISTINGS_PER_PAGE = 15
+
 
 logger = logging.getLogger("bot")
 
@@ -24,6 +27,7 @@ OLX_AGENTS = [
 
 
 def is_fresh_listing(date_text):
+    """Returns True if listing is fresh, False otherwise."""
     if not date_text:
         return False
     date_text = date_text.lower()
@@ -32,6 +36,7 @@ def is_fresh_listing(date_text):
 
 
 def fetch_olx_details(session, url):
+    """Returns the full description from a single OLX listing page."""
     try:
         time.sleep(random.uniform(0.5, 1.0))
         resp = session.get(url, timeout=5)
@@ -42,91 +47,138 @@ def fetch_olx_details(session, url):
         return "No description (Error)"
 
 
+def parse_olx_listings(html):
+    """Returns all OLX listing blocks from search results page."""
+    soup = BeautifulSoup(html, "html.parser")
+    return soup.find_all("div", {"data-cy": "l-card"})
+
+
+def extract_olx_listing_link(listing):
+    """Returns full OLX listing URL from one search result block, or None."""
+    a_tag = listing.find("a", href=True)
+    if not a_tag:
+        return None
+
+    href = a_tag["href"].strip()
+    
+    if not href or "/d/oferta/" not in href:
+        return None
+
+    link = "https://www.olx.pl" + href if href.startswith("/") else href
+
+    return link.split("#")[0]
+
+
+def extract_olx_date_location(listing):
+    """Returns the location and posting time text from one listing block."""
+    date_tag = listing.find("p", {"data-testid": "location-date"})
+    return date_tag.text.strip() if date_tag else "No data"
+
+    
+def should_skip_old_listing(date_loc):
+    """Returns True for stale listings, but keeps everything during the first run."""
+    if bot_state.is_first_run:
+        return False
+    return not is_fresh_listing(date_loc)
+
+
+def extract_olx_title(listing):
+    """Returns the listing title, or a placeholder when no heading is found."""
+    title_tag = listing.find("h6") or listing.find("h4")
+    return title_tag.text.strip() if title_tag else "No title"
+
+
+def extract_olx_price(listing):
+    """Returns the listing price text, or a placeholder when it is missing."""
+    price_tag = listing.find("p", {"data-testid": "ad-price"})
+    return price_tag.text.strip() if price_tag else "???"
+
+
+def extract_olx_image(listing):
+    """Returns the thumbnail URL from one listing block, or an empty string."""
+    img_tag = listing.find("img")
+    return img_tag.get("src") if img_tag else ""
+
+
+def is_worth_buying(ai_verdict):
+    """Returns True when the AI verdict recommends the deal."""
+    verdict = ai_verdict.upper()
+    if "NIE WARTO" in verdict or "RYZYKO" in verdict:
+        return False
+    return "WARTO" in verdict
+
+
+def build_olx_discord_payload(title, link, price, date_loc, img, ai_verdict, bot_name):
+    """Builds the Discord embed for a matched OLX listing."""
+    return {
+        "embeds": [
+            {
+                "title": f"💎 {title}",
+                "url": link,
+                "color": 5763719,
+                "description": (
+                    f"**Cena:** `{price}`\n**Lokalizacja:** {date_loc}\n\n"
+                    f"🤖 **Gemini:**\n{ai_verdict}"
+                ),
+                "thumbnail": {"url": img},
+                "footer": {
+                    "text": f"OLX Bot ({bot_name}) • {datetime.now().strftime('%H:%M')}"
+                },
+            }
+        ]
+    }
+
+
 def check_olx(history, bot):
+    """Scans all OLX URLs of one bot and notifies Discord about new deals."""
     bot_name = bot.get("name", "Unknown")
     webhook_url = bot.get("webhook_url")
     history_file = bot.get("history_file")
     ai_prompt = bot.get("prompt_text", "")
 
     logger.info(f"🔵 [OLX - {bot_name}] Scanning...")
-    session = req_olx.Session()
-    session.headers.update({"User-Agent": random.choice(OLX_AGENTS)})
+    olx_http_session = requests.Session()
+    olx_http_session.headers.update({"User-Agent": random.choice(OLX_AGENTS)})
 
     for url in bot.get("urls_olx", []):
         try:
-            resp = session.get(url, timeout=10)
+            resp = olx_http_session.get(url, timeout=10)
             if resp.status_code != 200:
+                logger.warning(f"OLX HTTP {resp.status_code} [{bot_name}] on {url}")
                 continue
-            soup = BeautifulSoup(resp.text, "html.parser")
-            cards = soup.find_all("div", {"data-cy": "l-card"})
+            
+            listings  = parse_olx_listings(resp.text)
 
-            for card in cards[:15]:
+            for listing in listings[:OLX_MAX_LISTINGS_PER_PAGE]:
                 try:
-                    a_tag = card.find("a")
-                    if not a_tag:
-                        continue
-                    href = a_tag["href"]
-                    link = "https://www.olx.pl" + href if href.startswith("/") else href
-                    link = link.split("#")[0]
-
-                    if link in history:
+                    link = extract_olx_listing_link(listing)
+                    if not link or link in history:
                         continue
 
-                    date_loc = "No data"
-                    date_tag = card.find("p", {"data-testid": "location-date"})
-                    if date_tag:
-                        date_loc = date_tag.text.strip()
-
-                    if not bot_state.is_first_run and not is_fresh_listing(date_loc):
+                    date_loc = extract_olx_date_location(listing)
+                    
+                    if should_skip_old_listing(date_loc):
                         continue
 
-                    title = card.find("h6").text.strip() if card.find("h6") else (
-                        card.find("h4").text.strip() if card.find("h4") else "No title"
-                    )
-                    price = (
-                        card.find("p", {"data-testid": "ad-price"}).text.strip()
-                        if card.find("p", {"data-testid": "ad-price"})
-                        else "???"
-                    )
-                    img = card.find("img").get("src") if card.find("img") else ""
+                    title = extract_olx_title(listing)
+                    price = extract_olx_price(listing)
+                    img = extract_olx_image(listing)
 
-                    history.add(link)
+                    history.add(link) # history is a set object, we use this object to avoid re-reading the history file on every listing
                     save_link(link, history_file)
                     logger.info(f"OLX [NEW in {bot_name}]: {price} | {title[:30]}")
 
                     if not bot_state.is_first_run:
-                        full_desc = fetch_olx_details(session, link)
+                        full_desc = fetch_olx_details(olx_http_session, link)
                         ai_verdict = analyze_ai(title, price, full_desc, img, ai_prompt)
-                        ai_verdict_upper = ai_verdict.upper()
 
-                        if (
-                            "NIE WARTO" in ai_verdict_upper
-                            or "RYZYKO" in ai_verdict_upper
-                            or "WARTO" not in ai_verdict_upper
-                        ):
+                        if not is_worth_buying(ai_verdict):
                             continue
 
-                        payload = {
-                            "embeds": [
-                                {
-                                    "title": f"💎 {title}",
-                                    "url": link,
-                                    "color": 5763719,
-                                    "description": (
-                                        f"**Cena:** `{price}`\n**Lokalizacja:** {date_loc}\n\n"
-                                        f"🤖 **Gemini:**\n{ai_verdict}"
-                                    ),
-                                    "thumbnail": {"url": img},
-                                    "footer": {
-                                        "text": f"OLX Bot ({bot_name}) • {datetime.now().strftime('%H:%M')}"
-                                    },
-                                }
-                            ]
-                        }
-
                         if webhook_url:
+                            payload = build_olx_discord_payload(title, link, price, date_loc, img, ai_verdict, bot_name)
                             logger.info(f"SENDING NOTIFICATION -> {bot_name}!")
-                            req_olx.post(webhook_url, json=payload)
+                            requests.post(webhook_url, json=payload)
                             time.sleep(2)
 
                 except Exception as e:
