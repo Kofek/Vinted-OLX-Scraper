@@ -30,7 +30,7 @@ OLX_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
 ]
 
-
+# helper functions/filters
 def is_fresh_listing(date_text):
     """Returns True if listing is fresh, False otherwise."""
     if not date_text:
@@ -39,31 +39,20 @@ def is_fresh_listing(date_text):
     return any(word in date_text for word in FRESH_LISTING_KEYWORDS)
 
 
-def fetch_olx_details(session, url):
-    """Returns the full description from a single OLX listing page."""
-    try:
-        time.sleep(random.uniform(*OLX_DELAY_BEFORE_DETAILS_SECONDS))
-        resp = session.get(url, timeout=OLX_DETAILS_TIMEOUT_SECONDS)
-
-        if resp.status_code != 200:
-            logger.warning(f"OLX details HTTP {resp.status_code} on {url}")
-            return "No description (Error)"
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        desc_div = soup.find("div", {"data-cy": "ad_description"})
-        return desc_div.text.strip() if desc_div else "No description"
-
-    except Exception as exc:
-        logger.warning(f"OLX details request error on {url}: {exc}")
-        return "No description (Error)"
+def should_skip_old_listing(date_loc):
+    """Returns True for stale listings, but keeps everything during the first run."""
+    if bot_state.is_first_run:
+        return False
+    return not is_fresh_listing(date_loc)
 
 
+# parsing listings
 def parse_olx_listings(html):
     """Returns all OLX listing blocks from search results page."""
-    soup = BeautifulSoup(html, "html.parser")
-    return soup.find_all("div", {"data-cy": "l-card"})
+    return BeautifulSoup(html, "html.parser").find_all("div", {"data-cy": "l-card"})
 
 
+#extracting data from listings
 def extract_olx_listing_link(listing):
     """Returns full OLX listing URL from one search result block, or None."""
     a_tag = listing.find("a", href=True)
@@ -86,13 +75,6 @@ def extract_olx_date_location(listing):
     return date_tag.text.strip() if date_tag else "No data"
 
 
-def should_skip_old_listing(date_loc):
-    """Returns True for stale listings, but keeps everything during the first run."""
-    if bot_state.is_first_run:
-        return False
-    return not is_fresh_listing(date_loc)
-
-
 def extract_olx_title(listing):
     """Returns the listing title, or a placeholder when no heading is found."""
     title_tag = listing.find("h6") or listing.find("h4")
@@ -111,6 +93,27 @@ def extract_olx_image(listing):
     return img_tag.get("src") if img_tag else ""
 
 
+# listing details
+def fetch_olx_details(session, url):
+    """Returns the full description from a single OLX listing page."""
+    try:
+        time.sleep(random.uniform(*OLX_DELAY_BEFORE_DETAILS_SECONDS))
+        resp = session.get(url, timeout=OLX_DETAILS_TIMEOUT_SECONDS)
+
+        if resp.status_code != 200:
+            logger.warning(f"OLX details HTTP {resp.status_code} on {url}")
+            return "No description (Error)"
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        desc_div = soup.find("div", {"data-cy": "ad_description"})
+        return desc_div.text.strip() if desc_div else "No description"
+
+    except Exception as exc:
+        logger.warning(f"OLX details request error on {url}: {exc}")
+        return "No description (Error)"
+
+
+# main function
 def check_olx(history, bot):
     """Scans all OLX URLs of one bot and notifies Discord about new deals."""
     bot_name = bot.get("name", "Unknown")
