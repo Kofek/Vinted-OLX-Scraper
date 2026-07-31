@@ -28,6 +28,7 @@ def make_olx_listing(html=SAMPLE_OLX_CARD):
 
 
 # --- is_fresh_listing ---
+
 def test_is_fresh_listing_accepts_today():
     assert is_fresh_listing("Kraków - Dzisiaj o 12:00") is True
 
@@ -45,6 +46,7 @@ def test_is_fresh_listing_rejects_empty():
 
 
 # --- should_skip_old_listing ---
+
 def test_first_run_does_not_skip_stale():
     bot_state.is_first_run = True
     assert should_skip_old_listing("wczoraj") is False
@@ -61,6 +63,7 @@ def test_fresh_listing_not_skipped_after_first_run():
 
 
 # --- parse_olx_listings ---
+
 def test_parse_olx_listings_finds_two_cards():
     html = '<div data-cy="l-card">a</div><div data-cy="l-card">b</div>'
     assert len(parse_olx_listings(html)) == 2
@@ -71,6 +74,7 @@ def test_parse_olx_listings_empty_page():
 
 
 # --- extract_olx_listing_link ---
+
 def test_extract_olx_listing_link_from_relative_href():
     listing = make_olx_listing()
     assert extract_olx_listing_link(listing) == "https://www.olx.pl/d/oferta/test-manga-123"
@@ -103,6 +107,7 @@ def test_extract_olx_listing_link_no_anchor():
 
 
 # --- extract_olx_title ---
+
 def test_extract_olx_title():
     listing = make_olx_listing()
     assert extract_olx_title(listing) == "Manga Naruto tom 1"
@@ -115,6 +120,7 @@ def test_extract_olx_title_missing():
 
 
 # --- extract_olx_price ---
+
 def test_extract_olx_price():
     listing = make_olx_listing()
     assert extract_olx_price(listing) == "25 zł"
@@ -127,6 +133,7 @@ def test_extract_olx_price_missing():
 
 
 # --- extract_olx_date_location ---
+
 def test_extract_olx_date_location():
     listing = make_olx_listing()
     assert extract_olx_date_location(listing) == "Kraków - Dzisiaj o 12:00"
@@ -139,6 +146,7 @@ def test_extract_olx_date_location_missing():
 
 
 # --- extract_olx_image ---
+
 def test_extract_olx_image():
     listing = make_olx_listing()
     assert extract_olx_image(listing) == "https://img.olx.pl/thumb.jpg"
