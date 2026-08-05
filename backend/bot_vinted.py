@@ -157,7 +157,13 @@ def parse_vinted_listings(html):
 def extract_vinted_listing_link(item):
     """Returns full Vinted listing URL from one grid item, or None."""
     a_tag = item.find("a", href=True)
-    return a_tag.get("href") if a_tag else None
+    link = a_tag.get("href") if a_tag else None
+
+    if link and not link.startswith("http"):
+        link = VINTED_BASE_URL + link
+    
+    return link
+
 
 
 def extract_vinted_price(item):
