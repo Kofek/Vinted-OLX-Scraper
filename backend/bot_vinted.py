@@ -25,6 +25,13 @@ VINTED_DELAY_BEFORE_DETAILS_SECONDS = (1.0, 2.0)
 VINTED_DELAY_BETWEEN_URLS_SECONDS = (5, 10)
 DISCORD_DELAY_AFTER_POST_SECONDS = 3
 
+VINTED_PRICE_PLACEHOLDER = "???"
+VINTED_OWNER_PLACEHOLDER = "Hidden"
+VINTED_IMAGE_PLACEHOLDER = ""
+VINTED_TITLE_PLACEHOLDER = "Vinted Item"
+VINTED_DESCRIPTION_PLACEHOLDER = "No description"
+VINTED_DESCRIPTION_ERROR = "No description (Error)"
+
 VINTED_BROWSERS = [
     "chrome120",
     "chrome124",
@@ -149,67 +156,63 @@ def parse_vinted_listings(html):
 
 def extract_vinted_listing_link(item):
     """Returns full Vinted listing URL from one grid item, or None."""
-    a_tag = item.find("a")
-    if not a_tag:
-        return None
-
-    link = a_tag.get("href")
-    if not link:
-        return None
-
-    if not link.startswith("http"):
-        link = VINTED_BASE_URL + link
-
-    return link
+    a_tag = item.find("a", href=True)
+    return a_tag.get("href") if a_tag else None
 
 
 def extract_vinted_price(item):
     """Returns the listing price text, or a placeholder when it is missing."""
-    for text in item.stripped_strings:
-        if "zł" in text:
-            return text
-    return "???"
-
-
-def extract_vinted_owner(item):
-    """Returns the seller login from one grid item."""
-    owner_div = item.find("div", {"data-testid": "box-user-login"})
-    return owner_div.text.strip() if owner_div else "Hidden"
+    price_tag = item.find("p", {"data-testid": "feed-item--price-text"})
+    if not price_tag:
+        return VINTED_PRICE_PLACEHOLDER
+    return " ".join(price_tag.text.split())
 
 
 def extract_vinted_title(item):
     """Returns the listing title from one grid item."""
     img_tag = item.find("img")
     if img_tag and img_tag.get("alt"):
-        return img_tag.get("alt")[:VINTED_TITLE_MAX_LENGTH]
-    return "Vinted Item"
+        title = img_tag.get("alt").split(",")[0].strip()
+        return title[:VINTED_TITLE_MAX_LENGTH]
+    return VINTED_TITLE_PLACEHOLDER
 
 
 def extract_vinted_image(item):
     """Returns the thumbnail URL from one grid item, or an empty string."""
     img_tag = item.find("img")
-    return img_tag.get("src") if img_tag else ""
+    return img_tag.get("src") if img_tag else VINTED_IMAGE_PLACEHOLDER
 
 
 # listing details
 
+def extract_vinted_owner_from_page(soup):
+    """Returns the seller login from a listing page."""
+    owner_div = soup.find("div", {"data-testid": "profile-username"})
+    return owner_div.text.strip() if owner_div else VINTED_OWNER_PLACEHOLDER
+
+
+def extract_vinted_description_from_page(soup):
+    """Returns the listing description from a listing page."""
+    desc_div = soup.find("div", {"itemprop": "description"})
+    return desc_div.text.strip() if desc_div else VINTED_DESCRIPTION_PLACEHOLDER
+
+
 def fetch_vinted_details(session, url):
-    """Returns the full description from a single Vinted listing page."""
+    """Returns (description, owner) from a single Vinted listing page."""
     try:
         time.sleep(random.uniform(*VINTED_DELAY_BEFORE_DETAILS_SECONDS))
         resp = session.get(url, timeout=VINTED_DETAILS_TIMEOUT_SECONDS)
 
         if resp.status_code != 200:
             logger.warning(f"Vinted details HTTP {resp.status_code} on {url}")
-            return "No description (Error)"
+            return VINTED_DESCRIPTION_ERROR, VINTED_OWNER_PLACEHOLDER
 
         soup = BeautifulSoup(resp.text, "html.parser")
-        desc_div = soup.find("div", {"itemprop": "description"})
-        return desc_div.text.strip() if desc_div else "No description"
+        return extract_vinted_description_from_page(soup), extract_vinted_owner_from_page(soup)
 
     except Exception as exc:
         logger.warning(f"Vinted details request error on {url}: {exc}")
-        return "No description (Error)"
+        return VINTED_DESCRIPTION_ERROR, VINTED_OWNER_PLACEHOLDER
 
 
 # main function
@@ -228,20 +231,20 @@ def check_vinted(history, bot):
         try:
             catalog_result = fetch_vinted_catalog(url, bot_name)
             if not catalog_result:
-                return history
+                continue
 
-            session, browser, resp = catalog_result
+            session, _, resp = catalog_result
             items = parse_vinted_listings(resp.text)
 
             for item in items[:VINTED_MAX_LISTINGS_PER_PAGE]:
                 try:
                     link = extract_vinted_listing_link(item)
+
                     if not link or link in history:
                         continue
 
                     title = extract_vinted_title(item)
                     price = extract_vinted_price(item)
-                    owner = extract_vinted_owner(item)
                     img = extract_vinted_image(item)
 
                     history.add(link)
@@ -249,7 +252,7 @@ def check_vinted(history, bot):
                     logger.info(f"VINTED [NEW in {bot_name}]: {price} | {title}")
 
                     if not bot_state.is_first_run:
-                        full_desc = fetch_vinted_details(session, link)
+                        full_desc, owner = fetch_vinted_details(session, link)
                         ai_verdict = analyze_ai(title, price, full_desc, img, ai_prompt)
 
                         if not is_worth_buying(ai_verdict):

@@ -1,9 +1,10 @@
 from bs4 import BeautifulSoup
 
 from bot_vinted import (
+    extract_vinted_description_from_page,
     extract_vinted_image,
     extract_vinted_listing_link,
-    extract_vinted_owner,
+    extract_vinted_owner_from_page,
     extract_vinted_price,
     extract_vinted_title,
     parse_vinted_listings,
@@ -12,15 +13,25 @@ from bot_vinted import (
 SAMPLE_VINTED_ITEM = """
 <div data-testid="grid-item">
   <a href="/items/1234567890-test-manga">Link</a>
-  <div data-testid="box-user-login">seller123</div>
   <img alt="Manga Naruto tom 1 - bardzo długi tytuł który powinien zostać obcięty" src="https://img.vinted.pl/thumb.jpg" />
-  <span>25 zł</span>
+  <p data-testid="feed-item--price-text">25 zł</p>
 </div>
+"""
+
+SAMPLE_VINTED_LISTING_PAGE = """
+<html>
+  <div itemprop="description">Opis mangi w dobrym stanie.</div>
+  <div data-testid="profile-username">seller123</div>
+</html>
 """
 
 
 def make_vinted_item(html=SAMPLE_VINTED_ITEM):
     return BeautifulSoup(html, "html.parser").find("div")
+
+
+def make_vinted_listing_page(html=SAMPLE_VINTED_LISTING_PAGE):
+    return BeautifulSoup(html, "html.parser")
 
 
 # --- parse_vinted_listings ---
@@ -60,21 +71,40 @@ def test_extract_vinted_price_finds_zl_text():
     assert extract_vinted_price(item) == "25 zł"
 
 
+def test_extract_vinted_price_handles_nbsp():
+    item = make_vinted_item(
+        '<div data-testid="grid-item"><p data-testid="feed-item--price-text">190,00&nbsp;zł</p></div>'
+    )
+    assert extract_vinted_price(item) == "190,00 zł"
+
+
 def test_extract_vinted_price_missing_returns_placeholder():
     item = make_vinted_item('<div data-testid="grid-item"><span>no price</span></div>')
     assert extract_vinted_price(item) == "???"
 
 
-# --- extract_vinted_owner ---
+# --- extract_vinted_owner_from_page ---
 
-def test_extract_vinted_owner_reads_login():
-    item = make_vinted_item()
-    assert extract_vinted_owner(item) == "seller123"
+def test_extract_vinted_owner_from_page_reads_username():
+    soup = make_vinted_listing_page()
+    assert extract_vinted_owner_from_page(soup) == "seller123"
 
 
-def test_extract_vinted_owner_missing_returns_hidden():
-    item = make_vinted_item('<div data-testid="grid-item"></div>')
-    assert extract_vinted_owner(item) == "Hidden"
+def test_extract_vinted_owner_from_page_missing_returns_hidden():
+    soup = make_vinted_listing_page("<html></html>")
+    assert extract_vinted_owner_from_page(soup) == "Hidden"
+
+
+# --- extract_vinted_description_from_page ---
+
+def test_extract_vinted_description_from_page_reads_description():
+    soup = make_vinted_listing_page()
+    assert extract_vinted_description_from_page(soup) == "Opis mangi w dobrym stanie."
+
+
+def test_extract_vinted_description_from_page_missing_returns_placeholder():
+    soup = make_vinted_listing_page("<html></html>")
+    assert extract_vinted_description_from_page(soup) == "No description"
 
 
 # --- extract_vinted_title ---
@@ -83,6 +113,13 @@ def test_extract_vinted_title_from_img_alt():
     item = make_vinted_item()
     alt = "Manga Naruto tom 1 - bardzo długi tytuł który powinien zostać obcięty"
     assert extract_vinted_title(item) == alt[:60]
+
+
+def test_extract_vinted_title_strips_text_after_comma():
+    item = make_vinted_item(
+        '<div data-testid="grid-item"><img alt="Manga Naruto tom 1, rozmiar M" src="https://img.vinted.pl/thumb.jpg" /></div>'
+    )
+    assert extract_vinted_title(item) == "Manga Naruto tom 1"
 
 
 def test_extract_vinted_title_missing_returns_default():

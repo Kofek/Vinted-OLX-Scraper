@@ -18,6 +18,9 @@ load_dotenv(BASE_DIR / ".env")
 configure_logging()
 logger = logging.getLogger(Path(__file__).stem)
 
+MIN_WAIT_TIME = 60
+MAX_WAIT_TIME = 90
+
 API_KEYS_POOL, MODELS_POOL = validate_scraper_startup(BASE_DIR)
 init_ai(API_KEYS_POOL, MODELS_POOL)
 
@@ -43,7 +46,7 @@ def main():
             logger.info("\n✅ Initial databases loaded. Waiting for new items.")
             bot_state.finish_initial_scan()
 
-        wait_time = random.uniform(120, 180)
+        wait_time = random.uniform(MIN_WAIT_TIME, MAX_WAIT_TIME)
         logger.info(f"\n💤 Waiting {int(wait_time)}s...\n")
         time.sleep(wait_time)
 
