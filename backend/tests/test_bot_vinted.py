@@ -12,9 +12,9 @@ from bot_vinted import (
 
 SAMPLE_VINTED_ITEM = """
 <div data-testid="grid-item">
-  <a href="/items/1234567890-test-manga">Link</a>
-  <img alt="Manga Naruto tom 1 - bardzo długi tytuł który powinien zostać obcięty" src="https://img.vinted.pl/thumb.jpg" />
-  <p data-testid="feed-item--price-text">25 zł</p>
+  <a href="/items/1234567890-test-manga" data-testid="product-item-id-1234567890--overlay-link" title="Manga Naruto tom 1 - bardzo długi tytuł który powinien zostać obcięty, stan: Dobry, 25 zł">Link</a>
+  <img alt="Manga Naruto tom 1 - bardzo długi tytuł który powinien zostać obcięty, stan: Dobry, 25 zł" data-testid="product-item-id-1234567890--image--img" src="https://img.vinted.pl/thumb.jpg" />
+  <p data-testid="product-item-id-1234567890--price-text">25 zł</p>
 </div>
 """
 
@@ -59,6 +59,13 @@ def test_extract_vinted_listing_link_from_absolute_href():
     assert extract_vinted_listing_link(item) == "https://www.vinted.pl/items/99"
 
 
+def test_extract_vinted_listing_link_strips_referrer_query():
+    item = make_vinted_item(
+        '<div data-testid="grid-item"><a href="https://www.vinted.pl/items/9580842031-komiks?referrer=catalog" data-testid="product-item-id-9580842031--overlay-link">x</a></div>'
+    )
+    assert extract_vinted_listing_link(item) == "https://www.vinted.pl/items/9580842031-komiks"
+
+
 def test_extract_vinted_listing_link_missing_anchor():
     item = make_vinted_item('<div data-testid="grid-item"><span>no link</span></div>')
     assert extract_vinted_listing_link(item) is None
@@ -73,9 +80,16 @@ def test_extract_vinted_price_finds_zl_text():
 
 def test_extract_vinted_price_handles_nbsp():
     item = make_vinted_item(
-        '<div data-testid="grid-item"><p data-testid="feed-item--price-text">190,00&nbsp;zł</p></div>'
+        '<div data-testid="grid-item"><p data-testid="product-item-id-99--price-text">190,00&nbsp;zł</p></div>'
     )
     assert extract_vinted_price(item) == "190,00 zł"
+
+
+def test_extract_vinted_price_supports_legacy_feed_item_testid():
+    item = make_vinted_item(
+        '<div data-testid="grid-item"><p data-testid="feed-item--price-text">12 zł</p></div>'
+    )
+    assert extract_vinted_price(item) == "12 zł"
 
 
 def test_extract_vinted_price_missing_returns_placeholder():
@@ -117,9 +131,16 @@ def test_extract_vinted_title_from_img_alt():
 
 def test_extract_vinted_title_strips_text_after_comma():
     item = make_vinted_item(
-        '<div data-testid="grid-item"><img alt="Manga Naruto tom 1, rozmiar M" src="https://img.vinted.pl/thumb.jpg" /></div>'
+        '<div data-testid="grid-item"><img alt="Manga Naruto tom 1, rozmiar M" data-testid="product-item-id-1--image--img" src="https://img.vinted.pl/thumb.jpg" /></div>'
     )
     assert extract_vinted_title(item) == "Manga Naruto tom 1"
+
+
+def test_extract_vinted_title_fallback_from_overlay_title():
+    item = make_vinted_item(
+        '<div data-testid="grid-item"><a href="/items/99" data-testid="product-item-id-99--overlay-link" title="Komiks Aquaman, stan: Bardzo dobry, 100 zł">x</a></div>'
+    )
+    assert extract_vinted_title(item) == "Komiks Aquaman"
 
 
 def test_extract_vinted_title_missing_returns_default():
