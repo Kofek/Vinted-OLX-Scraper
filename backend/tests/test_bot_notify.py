@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from bot_notify import DISCORD_EMBED_COLOR, build_notification_payload
+from scraper.notify import DISCORD_EMBED_COLOR, build_notification_payload
 
 
 def test_build_notification_payload_olx_embed_structure():
@@ -67,7 +67,7 @@ def test_build_notification_payload_footer_time(monkeypatch):
             return cls(2026, 7, 29, 14, 30)
 
     # monkeypatch is a way to mock the datetime module, we use it to set the current time to a fixed value
-    monkeypatch.setattr("bot_notify.datetime", FixedDatetime)
+    monkeypatch.setattr("scraper.notify.datetime", FixedDatetime)
 
     payload = build_notification_payload(
         "Test",

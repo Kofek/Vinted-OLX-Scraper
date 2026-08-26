@@ -11,7 +11,7 @@ services:
 
   scraper:
     build: ./backend
-    command: ["watchmedo", "auto-restart", "-d", ".", "-p", "*.py", "--recursive", "--", "python", "bot.py"]
+    command: ["watchmedo", "auto-restart", "-d", ".", "-p", "*.py", "--recursive", "--", "python", "-m", "scraper"]
     env_file:
       - ./backend/.env
     volumes:

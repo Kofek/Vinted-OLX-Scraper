@@ -1,12 +1,12 @@
 import logging
 import time
 
-from bot_history import load_history
-from bot_olx import check_olx
-from bot_runtime import mark_bot_error, mark_bot_running
-from bot_vinted import check_vinted
+from scraper.history import load_history
+from scraper.olx import check_olx
+from scraper.runtime import mark_bot_error, mark_bot_running
+from scraper.vinted import check_vinted
 
-logger = logging.getLogger("bot")
+logger = logging.getLogger(__name__)
 
 
 def scan_bot(bot):

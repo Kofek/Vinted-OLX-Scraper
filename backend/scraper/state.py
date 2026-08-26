@@ -1,6 +1,6 @@
 """Shared scraper loop state (first-run bootstrap scan).
 
-Use `import bot_state` in other modules — not `from bot_state import is_first_run`,
+Use `import scraper.state as bot_state` in other modules — not `from scraper.state import is_first_run`,
 or is_first_run stays True forever after finish_initial_scan().
 """
 

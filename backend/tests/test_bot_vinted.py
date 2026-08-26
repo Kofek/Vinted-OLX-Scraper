@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 
-from bot_vinted import (
+from scraper.vinted import (
     extract_vinted_description_from_page,
     extract_vinted_image,
     extract_vinted_listing_link,

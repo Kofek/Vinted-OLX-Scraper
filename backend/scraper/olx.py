@@ -4,12 +4,12 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
-from bot_ai import analyze_ai
-from bot_history import save_link
-from bot_notify import build_notification_payload, is_worth_buying
-import bot_state
+from scraper.ai import analyze_ai
+from scraper.history import save_link
+from scraper.notify import build_notification_payload, is_worth_buying
+import scraper.state as bot_state
 
-logger = logging.getLogger("bot")
+logger = logging.getLogger(__name__)
 
 OLX_MAX_LISTINGS_PER_PAGE = 15
 OLX_REQUEST_TIMEOUT_SECONDS = 10

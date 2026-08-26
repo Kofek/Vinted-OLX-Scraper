@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 
-import bot_state
-from bot_olx import (
+import scraper.state as bot_state
+from scraper.olx import (
     extract_olx_date_location,
     extract_olx_image,
     extract_olx_listing_link,

@@ -13,7 +13,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Json
 from pydantic import BaseModel, Field
 
-from bot_status import get_scraper_running_status, get_scraper_worker_snapshot
+from scraper.status import get_scraper_running_status, get_scraper_worker_snapshot
 
 app = FastAPI(title="BotVinted API")
 BASE_DIR = Path(__file__).resolve().parent

@@ -5,15 +5,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from bot_ai import init_ai
-from bot_config import load_active_bots_from_database, validate_scraper_startup
-from bot_scan import scan_bot
-from bot_runtime import sync_runtime_with_enabled_flags
-import bot_state
-from bot_status import mark_scraper_heartbeat, mark_scraper_started, mark_scraper_stopped
+from scraper.ai import init_ai
+from scraper.config import load_active_bots_from_database, validate_scraper_startup
+from scraper.scan import scan_bot
+from scraper.runtime import sync_runtime_with_enabled_flags
+import scraper.state as bot_state
+from scraper.status import mark_scraper_heartbeat, mark_scraper_started, mark_scraper_stopped
 from logging_config import configure_logging
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 configure_logging()
 logger = logging.getLogger(Path(__file__).stem)
@@ -51,7 +51,8 @@ def main():
         time.sleep(wait_time)
 
 
-if __name__ == "__main__":
+def run():
+    """Entry point for python -m scraper and direct worker.py runs."""
     try:
         main()
     except KeyboardInterrupt:
@@ -61,3 +62,7 @@ if __name__ == "__main__":
         mark_scraper_stopped()
         logger.exception("Bot terminated with an error")
         raise
+
+
+if __name__ == "__main__":
+    run()
