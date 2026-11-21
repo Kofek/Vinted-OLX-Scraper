@@ -112,6 +112,13 @@ def test_extract_vinted_owner_from_page_reads_username():
     assert extract_vinted_owner_from_page(soup) == "seller123"
 
 
+def test_extract_vinted_owner_from_page_reads_span_username():
+    soup = make_vinted_listing_page(
+        '<html><span data-testid="profile-username">99martyna</span></html>'
+    )
+    assert extract_vinted_owner_from_page(soup) == "99martyna"
+
+
 def test_extract_vinted_owner_from_page_missing_returns_hidden():
     soup = make_vinted_listing_page("<html></html>")
     assert extract_vinted_owner_from_page(soup) == "Hidden"

@@ -203,8 +203,8 @@ def extract_vinted_image(item):
 
 def extract_vinted_owner_from_page(soup):
     """Returns the seller login from a listing page."""
-    owner_div = soup.find("div", {"data-testid": "profile-username"})
-    return owner_div.text.strip() if owner_div else VINTED_OWNER_PLACEHOLDER
+    owner_tag = soup.find(attrs={"data-testid": "profile-username"})
+    return owner_tag.text.strip() if owner_tag else VINTED_OWNER_PLACEHOLDER
 
 
 def extract_vinted_description_from_page(soup):
