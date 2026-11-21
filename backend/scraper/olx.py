@@ -66,7 +66,7 @@ def extract_olx_listing_link(listing):
 
     link = "https://www.olx.pl" + href if href.startswith("/") else href
 
-    return link.split("#")[0]
+    return link.split("?")[0].split("#")[0]
 
 
 def extract_olx_date_location(listing):

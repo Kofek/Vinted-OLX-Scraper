@@ -157,11 +157,18 @@ def parse_vinted_listings(html):
 def extract_vinted_listing_link(item):
     """Returns full Vinted listing URL from one grid item, or None."""
     a_tag = item.find("a", {"data-testid": lambda x: x and x.endswith("--overlay-link")})
+    if not a_tag:
+        a_tag = item.find("a", href=True)
     link = a_tag.get("href") if a_tag else None
 
-    if link and not link.startswith("http"):
+    if not link:
+        return None
+
+    link = link.split("?")[0].split("#")[0]
+
+    if not link.startswith("http"):
         link = VINTED_BASE_URL + link
-    
+
     return link
 
 
@@ -176,9 +183,13 @@ def extract_vinted_price(item):
 def extract_vinted_title(item):
     """Returns the listing title from one grid item."""
     img_tag = item.find("img", {"data-testid": lambda x: x and x.endswith("--image--img")})
+    a_tag = item.find("a", {"data-testid": lambda x: x and x.endswith("--overlay-link")})
+
     if img_tag and img_tag.get("alt"):
-        title = img_tag.get("alt").split(",")[0].strip()
-        return title[:VINTED_TITLE_MAX_LENGTH]
+        return img_tag.get("alt").split(",")[0].strip()[:VINTED_TITLE_MAX_LENGTH]
+    elif a_tag and a_tag.get("title"):
+        return a_tag.get("title").split(",")[0].strip()[:VINTED_TITLE_MAX_LENGTH]
+
     return VINTED_TITLE_PLACEHOLDER
 
 

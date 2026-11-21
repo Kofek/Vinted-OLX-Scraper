@@ -90,6 +90,16 @@ def test_extract_olx_listing_link_strips_hash():
     assert extract_olx_listing_link(listing) == "https://www.olx.pl/d/oferta/test-123"
 
 
+def test_extract_olx_listing_link_strips_query():
+    html = """
+    <div data-cy="l-card">
+      <a href="/d/oferta/test-123.html?search_reason=search%7Cpromoted">Link</a>
+    </div>
+    """
+    listing = make_olx_listing(html)
+    assert extract_olx_listing_link(listing) == "https://www.olx.pl/d/oferta/test-123.html"
+
+
 def test_extract_olx_listing_link_invalid_href():
     html = """
     <div data-cy="l-card">
