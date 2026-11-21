@@ -85,6 +85,14 @@ def test_extract_vinted_price_handles_nbsp():
     assert extract_vinted_price(item) == "190,00 zł"
 
 
+def test_extract_vinted_price_supports_span_tag():
+    # Current Vinted markup (Nov 2026) puts the price in a <span>, not a <p>.
+    item = make_vinted_item(
+        '<div data-testid="grid-item"><span data-testid="product-item-id-10903849826--price-text">10,00&nbsp;zł</span></div>'
+    )
+    assert extract_vinted_price(item) == "10,00 zł"
+
+
 def test_extract_vinted_price_supports_legacy_feed_item_testid():
     item = make_vinted_item(
         '<div data-testid="grid-item"><p data-testid="feed-item--price-text">12 zł</p></div>'

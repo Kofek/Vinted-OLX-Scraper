@@ -167,7 +167,7 @@ def extract_vinted_listing_link(item):
 
 def extract_vinted_price(item):
     """Returns the listing price text, or a placeholder when it is missing."""
-    price_tag = item.find("p", {"data-testid": lambda x: x and x.endswith("--price-text")})
+    price_tag = item.find(attrs={"data-testid": lambda x: x and x.endswith("--price-text")})
     if not price_tag:
         return VINTED_PRICE_PLACEHOLDER
     return " ".join(price_tag.text.split())
